@@ -1,17 +1,19 @@
 #!/usr/bin/env bun
-import { copyFileSync, existsSync, mkdirSync, writeFileSync, rmSync } from 'fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 
-const OUT = './dist';
+const ROOT = dirname(fileURLToPath(import.meta.url));
+const OUT = join(ROOT, 'dist');
 
 // Clean dist
 try { rmSync(OUT, { recursive: true }); } catch {}
 mkdirSync(OUT, { recursive: true });
-mkdirSync(`${OUT}/icons`, { recursive: true });
 
 console.log('[build] Bundling scripts...');
 
 await Bun.build({
-    entrypoints: ['./src/content.ts'],
+    entrypoints: [join(ROOT, 'src/content.ts')],
     outdir: OUT,
     target: 'browser',
     minify: false,
@@ -19,7 +21,7 @@ await Bun.build({
 });
 
 await Bun.build({
-    entrypoints: ['./src/background.ts'],
+    entrypoints: [join(ROOT, 'src/background.ts')],
     outdir: OUT,
     target: 'browser',
     minify: false,
@@ -27,7 +29,7 @@ await Bun.build({
 });
 
 await Bun.build({
-    entrypoints: ['./src/popup.ts'],
+    entrypoints: [join(ROOT, 'src/popup.ts')],
     outdir: OUT,
     target: 'browser',
     minify: false,
@@ -35,22 +37,19 @@ await Bun.build({
 });
 
 // Copy static files
-copyFileSync('./popup.html', `${OUT}/popup.html`);
-if (existsSync('./logo-white.png')) copyFileSync('./logo-white.png', `${OUT}/logo-white.png`);
+copyFileSync(join(ROOT, 'popup.html'), join(OUT, 'popup.html'));
+if (existsSync(join(ROOT, 'logo-white.png'))) copyFileSync(join(ROOT, 'logo-white.png'), join(OUT, 'logo-white.png'));
 
-// Copy PNG icons from source
-for (const size of [16, 48, 128]) {
-    const src = `./icons/icon${size}.png`;
-    if (existsSync(src)) {
-        copyFileSync(src, `${OUT}/icons/icon${size}.png`);
-    } else {
-        console.warn(`[build] ⚠️  icons/icon${size}.png não encontrado em packages/extension/icons/`);
-    }
+// Copy icons exactly from packages/extension/icons.
+const iconsDir = join(ROOT, 'icons');
+if (existsSync(iconsDir)) {
+    cpSync(iconsDir, join(OUT, 'icons'), { recursive: true });
+} else {
+    console.warn('[build] ⚠️  pasta icons não encontrada em packages/extension/icons/');
 }
 
-// Copy manifest as-is
-const manifest = JSON.parse(await Bun.file('./manifest.json').text());
-writeFileSync(`${OUT}/manifest.json`, JSON.stringify(manifest, null, 2));
+// Copy manifest exactly as written in packages/extension/manifest.json.
+copyFileSync(join(ROOT, 'manifest.json'), join(OUT, 'manifest.json'));
 
 console.log('\n[build] ✅ Extensão buildada em ./dist\n');
 console.log('[build] Para carregar no Chrome:');

@@ -13,6 +13,7 @@ import {
 import { readTheme, writeTheme, type ThemeUpdate } from './theme';
 import { listComponents } from './components';
 import { writeComponentPreview, type ComponentPreviewRequest } from './preview';
+import { listProjectClasses } from './classes';
 import { watch } from 'chokidar';
 
 const PORT = 5179;
@@ -82,6 +83,26 @@ export function startServer(projectRoot: string): void {
         const loc = index.get(body.oid);
         if (!loc) {
             return c.json({ ok: false, error: `OID not found in index: ${body.oid}` }, 404);
+        }
+
+        if (body.kind === 'insert' && body.payload && typeof body.payload === 'object' && 'parentOid' in body.payload) {
+            const parentOid = String(body.payload.parentOid ?? '');
+            const parentLoc = index.get(parentOid);
+            if (!parentLoc) {
+                return c.json({ ok: false, error: `Parent OID not found in index: ${parentOid}` }, 404);
+            }
+            body.parentLoc = parentLoc;
+        }
+
+        if (body.kind === 'move' && body.payload && typeof body.payload === 'object' && 'targetOid' in body.payload) {
+            const targetOid = String(body.payload.targetOid ?? '');
+            if (targetOid) {
+                const targetLoc = index.get(targetOid);
+                if (!targetLoc) {
+                    return c.json({ ok: false, error: `Target OID not found in index: ${targetOid}` }, 404);
+                }
+                body.targetLoc = targetLoc;
+            }
         }
 
         if (body.ancestorOids?.length) {
@@ -165,6 +186,15 @@ export function startServer(projectRoot: string): void {
     app.get('/components', (c) => {
         const components = listComponents(projectRoot);
         return c.json({ ok: true, components });
+    });
+
+    /** GET /classes?tag=button&limit=60 — lists project-wide class tokens and repeated bundles */
+    app.get('/classes', (c) => {
+        const tag = c.req.query('tag') || undefined;
+        const rawLimit = Number.parseInt(c.req.query('limit') || '60', 10);
+        const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(rawLimit, 200)) : 60;
+        const classes = listProjectClasses(projectRoot, tag, limit);
+        return c.json({ ok: true, ...classes });
     });
 
     /** POST /component-preview { filePath, name } — writes a local app route for browser editing */

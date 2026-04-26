@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Visual Edit",
+  "name": "Befree Visual Edit",
   "version": "0.1.0",
   "description": "Edite textos e classes Tailwind diretamente no browser. Salva no código-fonte automaticamente.",
   "permissions": ["storage", "activeTab", "scripting"],

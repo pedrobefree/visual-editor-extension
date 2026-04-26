@@ -3,6 +3,7 @@ import {
     getAstFromContent,
     getContentFromAst,
     findNodeByPosition,
+    findNodePathByPosition,
     replaceNodeClasses,
     addClassToNode,
     updateNodeTextContent,
@@ -15,17 +16,37 @@ import {
     updatePropValueAtIndex,
     updateComponentUsageStringPropAtIndex,
     enableSlotClassOverride,
+    insertElementAtPath,
+    moveElementByOffset,
+    moveElementAtPath,
+    moveElementRelativeToSibling,
+    removeElementAtPath,
+    type InsertElementSpec,
+    type InsertPlacement,
     t,
 } from '@visual-edit/parser';
-import { getSourceFiles } from './scanner';
-import type { OidLocation } from './scanner';
+import { getSourceFiles, type OidLocation } from './scanner';
 
-export type EditKind = 'text' | 'class' | 'class-add' | 'attr';
+export type EditKind = 'text' | 'class' | 'class-add' | 'attr' | 'insert' | 'remove' | 'move';
+
+export interface InsertPayload {
+    parentOid: string;
+    element: InsertElementSpec;
+    placement?: InsertPlacement;
+    index?: number;
+}
+
+export interface MovePayload {
+    index: number;
+    direction?: 'up' | 'down';
+    targetOid?: string;
+    position?: 'before' | 'after';
+}
 
 export interface EditRequest {
     oid: string;
     kind: EditKind;
-    payload: string;
+    payload: string | InsertPayload | MovePayload | null;
     /** instance = edit component usage props when possible; component = edit source template globally. */
     scope?: 'instance' | 'component';
     /** Zero-based index of this rendered OID among same-OID elements on the active page. */
@@ -40,6 +61,10 @@ export interface EditRequest {
     currentText?: string;
     /** For kind='attr': the JSX attribute name to update (e.g. 'placeholder'). */
     propName?: string;
+    /** Resolved by the bridge when a structural insert targets a parent OID. */
+    parentLoc?: OidLocation;
+    /** Resolved by the bridge when a move targets a sibling OID. */
+    targetLoc?: OidLocation;
 }
 
 function orderedSourceFiles(projectRoot: string, hints?: string[]): string[] {
@@ -203,9 +228,11 @@ export function applyEdit(loc: OidLocation, req: EditRequest, projectRoot = ''):
     if (!ast) return { ok: false, error: 'AST parse failed' };
 
     const node = findNodeByPosition(ast, line, col);
-    if (!node) return { ok: false, error: `Node not found at ${filePath}:${line}:${col}` };
+    const nodePath = findNodePathByPosition(ast, line, col);
+    if (!node || !nodePath) return { ok: false, error: `Node not found at ${filePath}:${line}:${col}` };
 
     if (req.kind === 'text') {
+        if (typeof req.payload !== 'string') return { ok: false, error: 'String payload required for text edit' };
         // Check if this element's text content is a single identifier prop
         // expression like {label} or {children}.
         const propIdentifier = getSinglePropIdentifier(node);
@@ -237,6 +264,7 @@ export function applyEdit(loc: OidLocation, req: EditRequest, projectRoot = ''):
         updateNodeTextContent(node, req.payload);
 
     } else if (req.kind === 'class') {
+        if (typeof req.payload !== 'string') return { ok: false, error: 'String payload required for class edit' };
         if (req.scope !== 'component' && projectRoot && (req.instanceCount ?? 1) > 1) {
             const modified = tryInstanceClassEdit(loc, node, req.payload, projectRoot, req.oid, req.instanceIndex, req.sourceFileHints);
             if (modified.length > 0) {
@@ -251,8 +279,10 @@ export function applyEdit(loc: OidLocation, req: EditRequest, projectRoot = ''):
         }
         replaceNodeClasses(node, req.payload);
     } else if (req.kind === 'class-add') {
+        if (typeof req.payload !== 'string') return { ok: false, error: 'String payload required for class-add edit' };
         addClassToNode(node, req.payload);
     } else if (req.kind === 'attr') {
+        if (typeof req.payload !== 'string') return { ok: false, error: 'String payload required for attr edit' };
         if (!req.propName) return { ok: false, error: 'propName required for kind=attr' };
 
         // If the attribute value is a dynamic identifier like {placeholder},
@@ -273,6 +303,54 @@ export function applyEdit(loc: OidLocation, req: EditRequest, projectRoot = ''):
         // Fallback: edit the static string-literal attribute directly in the template
         const changed = updateNodeAttrValue(node, req.propName, req.payload);
         if (!changed) return { ok: false, error: `Attr "${req.propName}" not found or not a string literal` };
+    } else if (req.kind === 'insert') {
+        const payload = req.payload;
+        if (!payload || typeof payload !== 'object' || !('parentOid' in payload) || !('element' in payload)) {
+            return { ok: false, error: 'Invalid insert payload' };
+        }
+        if (!req.parentLoc) return { ok: false, error: 'Parent OID not found for insert' };
+
+        const parentContent = readFileSync(req.parentLoc.filePath, 'utf-8');
+        const parentAst = getAstFromContent(parentContent);
+        if (!parentAst) return { ok: false, error: 'AST parse failed for parent node' };
+
+        const parentPath = findNodePathByPosition(parentAst, req.parentLoc.line, req.parentLoc.col);
+        if (!parentPath) return { ok: false, error: 'Parent node not found for insert' };
+
+        insertElementAtPath(
+            parentPath,
+            payload.element,
+            payload.placement ?? 'append',
+            payload.index,
+        );
+
+        try {
+            writeFileSync(req.parentLoc.filePath, getContentFromAst(parentAst, parentContent), 'utf-8');
+        } catch {
+            return { ok: false, error: `Cannot write file: ${req.parentLoc.filePath}` };
+        }
+        return { ok: true, filePath: req.parentLoc.filePath };
+    } else if (req.kind === 'remove') {
+        const changed = removeElementAtPath(nodePath);
+        if (!changed) return { ok: false, error: 'Failed to remove selected element' };
+    } else if (req.kind === 'move') {
+        const payload = req.payload;
+        if (!payload || typeof payload !== 'object' || !('index' in payload) || typeof payload.index !== 'number') {
+            return { ok: false, error: 'Invalid move payload' };
+        }
+        const movePayload = payload as MovePayload;
+        const targetLoc = req.targetLoc;
+        let changed = false;
+        if (movePayload.direction === 'up' || movePayload.direction === 'down') {
+            changed = moveElementByOffset(nodePath, movePayload.direction === 'up' ? -1 : 1);
+        } else if (targetLoc) {
+            const targetPath = findNodePathByPosition(ast, targetLoc.line, targetLoc.col);
+            if (!targetPath) return { ok: false, error: 'Target node not found for move' };
+            changed = moveElementRelativeToSibling(nodePath, targetPath, movePayload.position ?? 'before');
+        } else {
+            changed = moveElementAtPath(nodePath, movePayload.index);
+        }
+        if (!changed) return { ok: false, error: 'Failed to move selected element' };
     }
 
     const newContent = getContentFromAst(ast, content);

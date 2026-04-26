@@ -8,9 +8,27 @@ import { loadLanguage, t } from './i18n';
 const BRIDGE = 'http://localhost:5179';
 const OID_ATTR = 'data-oid';
 const COMPONENT_PREVIEW_PATH_PREFIX = '/visual-edit-kit-component-preview/';
+const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+const CONTAINER_TAGS = new Set(['div', 'section', 'article', 'aside', 'main', 'header', 'footer', 'nav', 'form', 'ul', 'ol', 'li', 'figure', 'figcaption', 'fieldset', 'table', 'thead', 'tbody', 'tfoot', 'tr']);
+const NON_CONTAINER_TAGS = new Set(['button', 'a', 'p', 'span', 'label', 'strong', 'em', 'b', 'i', 'u', 'small', 'input', 'textarea', 'select', 'option', 'img', 'svg', 'path', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+
+interface OidEntry {
+    oid: string;
+    file: string;
+    line: number;
+    col: number;
+}
+
+interface ComponentInfo {
+    name: string;
+    relPath: string;
+    filePath: string;
+    exports: string[];
+}
 
 let enabled = false;
 let selectedEl: HTMLElement | null = null;
+let selectedOid = '';
 let panel: VisualEditPanel | null = null;
 let overlay: HTMLElement | null = null;
 let toolbar: VisualEditToolbar | null = null;
@@ -24,6 +42,9 @@ let componentOverlays: HTMLElement[] = [];
 let overlayFrame = 0;
 let responsiveStyle: HTMLStyleElement | null = null;
 let responsivePrefix = '';
+let componentRootOids = new Set<string>();
+let oidFileByOid = new Map<string, string>();
+let copyStyleTargetOid: string | null = null;
 
 /* ── Overlay ── */
 function getOrCreateOverlay(): HTMLElement {
@@ -96,8 +117,14 @@ function hideHoverOverlay(): void {
 
 function updateActiveOverlays(): void {
     overlayFrame = 0;
+    if ((!selectedEl || !selectedEl.isConnected) && selectedOid) {
+        const next = document.querySelector<HTMLElement>(oidSelector(selectedOid));
+        if (next) selectedEl = next;
+    }
     if (selectedEl?.isConnected) {
         moveOverlay(selectedEl);
+    } else if (selectedOid) {
+        hideOverlay();
     } else if (selectedEl) {
         deselect();
     }
@@ -286,6 +313,20 @@ async function bridgeEdit(oid: string, kind: string, payload: string, currentTex
     }
 }
 
+async function bridgeStructureEdit(oid: string, kind: 'insert' | 'remove' | 'move', payload: unknown): Promise<EditResponse> {
+    try {
+        const res = await fetch(`${BRIDGE}/edit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ oid, kind, payload }),
+        });
+        const data = await res.json();
+        return { ok: data.ok === true, error: data.error };
+    } catch {
+        return { ok: false, error: t('bridgeOfflineShort') };
+    }
+}
+
 async function bridgeEditAttr(oid: string, propName: string, payload: string, currentText: string, scope?: 'instance' | 'component'): Promise<EditResponse> {
     try {
         const instance = selectedInstanceInfo(oid);
@@ -363,6 +404,250 @@ function showPageToast(msg: string, type: 'success' | 'error'): void {
     setTimeout(() => toastEl?.remove(), 2500);
 }
 
+function oidSelector(oid: string): string {
+    return `[${OID_ATTR}="${oid.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`;
+}
+
+function isContainerElement(el: HTMLElement): boolean {
+    const tag = el.tagName.toLowerCase();
+    if (VOID_TAGS.has(tag) || NON_CONTAINER_TAGS.has(tag)) return false;
+    if (CONTAINER_TAGS.has(tag)) return true;
+    return el.children.length > 0;
+}
+
+function nearestOidAncestor(el: HTMLElement | null): HTMLElement | null {
+    let current = el;
+    while (current) {
+        if (current.hasAttribute(OID_ATTR)) return current;
+        current = current.parentElement;
+    }
+    return null;
+}
+
+function projectClassesForTag(tagName: string): string {
+    const counts = new Map<string, number>();
+    document.querySelectorAll<HTMLElement>(tagName).forEach(node => {
+        node.className
+            .split(/\s+/)
+            .filter(Boolean)
+            .forEach(cls => counts.set(cls, (counts.get(cls) ?? 0) + 1));
+    });
+    return Array.from(counts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([cls]) => cls)
+        .join(' ');
+}
+
+function createInsertPreset(preset: 'text' | 'button' | 'group' | 'image') {
+    const projectButtonClasses = projectClassesForTag('button');
+    const projectImageClasses = projectClassesForTag('img');
+    switch (preset) {
+        case 'text':
+            return {
+                tagName: 'p',
+                textContent: t('insertDefaultText'),
+                attributes: { className: 'text-base' },
+            };
+        case 'button':
+            return {
+                tagName: 'button',
+                textContent: t('insertDefaultButton'),
+                attributes: {
+                    className: projectButtonClasses || 'inline-flex items-center justify-center px-4 py-2 rounded-md bg-blue-600 text-white',
+                    type: 'button',
+                },
+            };
+        case 'group':
+            return {
+                tagName: 'div',
+                attributes: { className: 'min-h-16 p-4 rounded-lg border border-dashed border-slate-300 bg-slate-50/50' },
+            };
+        case 'image':
+            return {
+                tagName: 'img',
+                attributes: {
+                    src: '/placeholder.png',
+                    alt: t('insertDefaultImageAlt'),
+                    className: projectImageClasses || 'w-32 h-32 object-cover rounded-md',
+                },
+            };
+    }
+}
+
+function elementChildrenWithOid(parent: HTMLElement): HTMLElement[] {
+    return Array.from(parent.children).filter(
+        child => child instanceof HTMLElement && child.hasAttribute(OID_ATTR),
+    ) as HTMLElement[];
+}
+
+function refreshPanelsSoon(): void {
+    setTimeout(() => {
+        void loadComponentContext();
+        layerPanel?.refresh();
+        layerPanel?.setSelectedElement(selectedEl);
+        scheduleOverlayUpdate();
+    }, 250);
+}
+
+function insertionRequestForSelection(el: HTMLElement, preset: 'text' | 'button' | 'group' | 'image') {
+    if (isContainerElement(el)) {
+        return {
+            parentOid: el.getAttribute(OID_ATTR)!,
+            placement: 'append' as const,
+            element: createInsertPreset(preset),
+        };
+    }
+
+    let current: HTMLElement | null = el;
+    while (current) {
+        const parent = nearestOidAncestor(current.parentElement);
+        if (!parent) return null;
+        if (isContainerElement(parent)) {
+            const siblings = elementChildrenWithOid(parent);
+            const currentIndex = siblings.findIndex(node => node === current);
+            if (currentIndex === -1) return null;
+            return {
+                parentOid: parent.getAttribute(OID_ATTR)!,
+                placement: 'index' as const,
+                index: currentIndex + 1,
+                element: createInsertPreset(preset),
+            };
+        }
+        current = parent;
+    }
+    return null;
+}
+
+async function handleInsertElement(preset: 'text' | 'button' | 'group' | 'image'): Promise<EditResponse> {
+    if (!selectedEl) return { ok: false, error: t('structureNoSelection') };
+    const oid = selectedEl.getAttribute(OID_ATTR);
+    if (!oid) return { ok: false, error: t('structureNoSelection') };
+    const payload = insertionRequestForSelection(selectedEl, preset);
+    if (!payload) return { ok: false, error: t('structureInsertUnavailable') };
+    const result = await bridgeStructureEdit(oid, 'insert', payload);
+    if (result.ok) refreshPanelsSoon();
+    return result;
+}
+
+async function handleRemoveElement(oid: string): Promise<EditResponse> {
+    const result = await bridgeStructureEdit(oid, 'remove', null);
+    if (result.ok) {
+        if (selectedEl?.getAttribute(OID_ATTR) === oid) deselect();
+        refreshPanelsSoon();
+    }
+    return result;
+}
+
+function applyLocalMove(el: HTMLElement, nextIndex: number): void {
+    const parent = el.parentElement;
+    if (!parent) return;
+    const siblings = elementChildrenWithOid(parent);
+    const reordered = siblings.filter(node => node !== el);
+    reordered.splice(nextIndex, 0, el);
+    reordered.forEach(node => parent.appendChild(node));
+}
+
+async function handleMoveElement(oid: string, direction: 'up' | 'down', targetEl?: HTMLElement): Promise<EditResponse> {
+    const el = targetEl ?? document.querySelector<HTMLElement>(oidSelector(oid));
+    const parent = el?.parentElement;
+    if (!el || !parent) return { ok: false, error: t('structureMoveUnavailable') };
+    const siblings = elementChildrenWithOid(parent);
+    const currentIndex = siblings.findIndex(node => node === el);
+    if (currentIndex === -1) return { ok: false, error: t('structureMoveUnavailable') };
+    const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (nextIndex < 0 || nextIndex >= siblings.length) return { ok: false, error: t('structureMoveUnavailable') };
+    const targetSibling = siblings[nextIndex];
+    const targetOid = targetSibling?.getAttribute(OID_ATTR);
+    const result = await bridgeStructureEdit(oid, 'move', {
+        index: nextIndex,
+        direction,
+        targetOid: targetOid ?? undefined,
+        position: direction === 'up' ? 'before' : 'after',
+    });
+    if (result.ok) {
+        applyLocalMove(el, nextIndex);
+        selectedEl = el;
+        layerPanel?.refresh();
+        layerPanel?.setSelectedElement(el);
+        moveOverlay(el);
+        scheduleOverlayUpdate();
+        refreshPanelsSoon();
+    }
+    return result;
+}
+
+function fileMatches(filePath: string, indexedFile: string): boolean {
+    return filePath === indexedFile ||
+        filePath.endsWith(indexedFile) ||
+        indexedFile === filePath.split('/').pop();
+}
+
+async function loadComponentContext(): Promise<void> {
+    try {
+        const [oidRes, componentRes] = await Promise.all([
+            fetch(`${BRIDGE}/oids`, { signal: AbortSignal.timeout(3000) }),
+            fetch(`${BRIDGE}/components`, { signal: AbortSignal.timeout(3000) }),
+        ]);
+        const oidData = await oidRes.json() as { entries?: OidEntry[] };
+        const componentData = await componentRes.json() as { components?: ComponentInfo[] };
+        const entries = oidData.entries ?? [];
+        const components = componentData.components ?? [];
+        oidFileByOid = new Map(entries.map(entry => [entry.oid, entry.file]));
+        const componentFiles = new Set(components.map(component => component.filePath));
+        const roots = new Set<string>();
+        entries.forEach(entry => {
+            const file = entry.file;
+            const matchesComponent = Array.from(componentFiles).some(componentFile => fileMatches(componentFile, file));
+            if (!matchesComponent) return;
+            const domNode = document.querySelector<HTMLElement>(oidSelector(entry.oid));
+            if (!domNode) return;
+            const parentOid = nearestOidAncestor(domNode.parentElement)?.getAttribute(OID_ATTR);
+            const parentFile = parentOid ? oidFileByOid.get(parentOid) : null;
+            const parentMatchesComponent = parentFile ? Array.from(componentFiles).some(componentFile => fileMatches(componentFile, parentFile)) : false;
+            if (!parentMatchesComponent || parentFile !== file) roots.add(entry.oid);
+        });
+        componentRootOids = roots;
+    } catch {
+        componentRootOids = new Set();
+        oidFileByOid = new Map();
+    }
+}
+
+function elementHasComponentContext(el: HTMLElement): boolean {
+    let current: HTMLElement | null = el;
+    while (current) {
+        const oid = current.getAttribute(OID_ATTR);
+        if (oid && componentRootOids.has(oid)) return true;
+        current = nearestOidAncestor(current.parentElement);
+    }
+    return false;
+}
+
+function startCopyStyleMode(oid: string): void {
+    copyStyleTargetOid = oid;
+    showPageToast(t('panelCopyStylePending'), 'success');
+}
+
+async function applyCopiedStyle(sourceEl: HTMLElement): Promise<void> {
+    if (!copyStyleTargetOid) return;
+    const targetOid = copyStyleTargetOid;
+    copyStyleTargetOid = null;
+    const targetEl = document.querySelector<HTMLElement>(oidSelector(targetOid));
+    if (!targetEl) {
+        showPageToast(t('structureNoSelection'), 'error');
+        return;
+    }
+    targetEl.className = sourceEl.className;
+    const result = await bridgeEdit(targetOid, 'class', sourceEl.className, undefined, 'instance');
+    if (result.ok) {
+        selectElement(targetEl, targetOid);
+        showPageToast(t('panelCopyStyleSuccess'), 'success');
+    } else {
+        showPageToast(result.error ?? t('panelClassesSaveError'), 'error');
+    }
+}
+
 /* ── Mouse events ── */
 function onMouseMove(e: MouseEvent): void {
     if (!enabled || selectedEl) return;
@@ -419,7 +704,21 @@ function onClick(e: MouseEvent): void {
 
     const target = getOidTarget(e.target);
     if (!target) {
+        if (copyStyleTargetOid) {
+            copyStyleTargetOid = null;
+            showPageToast(t('panelCopyStyleCancelled'), 'error');
+            return;
+        }
         if (selectedEl) deselect();
+        return;
+    }
+
+    if (copyStyleTargetOid) {
+        if (target.getAttribute(OID_ATTR) === copyStyleTargetOid) {
+            showPageToast(t('panelCopyStylePickAnother'), 'error');
+            return;
+        }
+        void applyCopiedStyle(target);
         return;
     }
 
@@ -458,11 +757,25 @@ function onDblClick(e: MouseEvent): void {
 
 function onKeyDown(e: KeyboardEvent): void {
     if (!enabled) return;
+    if (e.key === 'Escape' && copyStyleTargetOid) {
+        copyStyleTargetOid = null;
+        showPageToast(t('panelCopyStyleCancelled'), 'error');
+        return;
+    }
     if (e.key === 'Escape') deselect();
+    if (e.key === 'Delete' && selectedEl?.getAttribute(OID_ATTR)) {
+        e.preventDefault();
+        const oid = selectedEl.getAttribute(OID_ATTR)!;
+        void handleRemoveElement(oid).then(result => {
+            showPageToast(result.ok ? t('panelRemoveSuccess') : result.error ?? t('panelStructureError'), result.ok ? 'success' : 'error');
+        });
+    }
 }
 
 function deselect(): void {
     selectedEl = null;
+    selectedOid = '';
+    copyStyleTargetOid = null;
     hideOverlay();
     clearComponentOverlays();
     document.body.style.cursor = '';
@@ -471,25 +784,34 @@ function deselect(): void {
 
 function selectElement(el: HTMLElement, oid: string): void {
     selectedEl = el;
+    selectedOid = oid;
     moveOverlay(el);
     if (!panel) {
         panel = new VisualEditPanel({
             onApply: async (o, classes, scope) => bridgeEdit(o, 'class', classes, undefined, scope),
             onTextApply: async (o, text, orig, scope) => bridgeEdit(o, 'text', text, orig, scope),
             onAttrApply: async (o, attr, val, cur, scope) => bridgeEditAttr(o, attr, val, cur, scope),
+            onInsertElement: async (_o, preset) => handleInsertElement(preset),
+            onRemoveElement: async (o) => handleRemoveElement(o),
+            onStartCopyStyle: (o) => startCopyStyleMode(o),
             onClose: deselect,
         });
     }
     const isComponentPreview = window.location.pathname.startsWith(COMPONENT_PREVIEW_PATH_PREFIX);
-    panel.show(el, oid, isComponentPreview ? { forceScope: 'component', hideScopeControl: true } : {});
+    const hasComponentContext = elementHasComponentContext(el);
+    panel.show(el, oid, isComponentPreview
+        ? { forceScope: 'component', hideScopeControl: true }
+        : { hideScopeControl: !hasComponentContext });
     panel.setResponsivePrefix(responsivePrefix);
-    layerPanel?.setSelected(oid);
+    layerPanel?.setSelectedElement(el);
+    scheduleOverlayUpdate();
 }
 
 /* ── Enable / disable ── */
 function enable(): void {
     if (enabled) return;
     enabled = true;
+    void loadComponentContext();
     document.addEventListener('mousemove', onMouseMove, true);
     document.addEventListener('click', onClick, true);
     document.addEventListener('dblclick', onDblClick, true);
@@ -522,6 +844,12 @@ function enable(): void {
                         selectElement(el, oid);
                     },
                     onHover: (el) => showTreeHover(el),
+                    onMove: (el, oid, direction) => {
+                        void handleMoveElement(oid, direction, el).then(result => {
+                            showPageToast(result.ok ? t('panelMoveSuccess') : result.error ?? t('panelStructureError'), result.ok ? 'success' : 'error');
+                        });
+                    },
+                    isComponentRoot: (oid) => componentRootOids.has(oid),
                 });
                 toolbar?.setTreeActive(true);
             }
@@ -590,6 +918,9 @@ function disable(): void {
     setResponsivePreview('', null);
     responsiveStyle?.remove();
     responsiveStyle = null;
+    componentRootOids = new Set();
+    oidFileByOid = new Map();
+    copyStyleTargetOid = null;
 
     showPageToast(t('visualEditDisabled'), 'error');
 }

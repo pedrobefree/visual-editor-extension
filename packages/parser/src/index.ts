@@ -4,6 +4,17 @@ export { getAstFromContent, getContentFromAst, findNodeByOid, findNodeByPosition
 export { updateNodeTextContent, setNodeTextToIdentifier } from './code-edit/text';
 export { addClassToNode, replaceNodeClasses, enableSlotClassOverride } from './code-edit/style';
 export {
+    createJsxElement,
+    findNodePathByPosition,
+    insertElementAtPath,
+    moveElementByOffset,
+    moveElementAtPath,
+    moveElementRelativeToSibling,
+    removeElementAtPath,
+    type InsertElementSpec,
+    type InsertPlacement,
+} from './code-edit/structure';
+export {
     getSinglePropIdentifier,
     getExportedComponentNames,
     findPropUsages,
@@ -17,3 +28,4 @@ export {
 export { customTwMerge } from './tw-merge';
 export { createOid } from './oid';
 export { t, traverse } from './packages';
+export type { NodePath, T } from './packages';

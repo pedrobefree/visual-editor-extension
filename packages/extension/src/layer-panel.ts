@@ -13,6 +13,7 @@ const OID_ATTR = 'data-oid';
 interface TreeNode {
     el: HTMLElement;
     oid: string;
+    key: string;
     depth: number;
     children: TreeNode[];
 }
@@ -62,8 +63,8 @@ function buildTree(root: HTMLElement): TreeNode[] {
     }
 
     const nodeMap = new Map<HTMLElement, TreeNode>();
-    for (const el of allOid) {
-        nodeMap.set(el, { el, oid: el.getAttribute(OID_ATTR)!, depth: 0, children: [] });
+    for (const [index, el] of allOid.entries()) {
+        nodeMap.set(el, { el, oid: el.getAttribute(OID_ATTR)!, key: `node-${index}`, depth: 0, children: [] });
     }
 
     const roots: TreeNode[] = [];
@@ -125,11 +126,24 @@ const CSS = `
 .toggle-btn::before { content: '▾'; }
 .toggle-btn.collapsed::before { content: '▸'; }
 .node-icon { font-size: 12px; color: #555; flex-shrink: 0; width: 15px; text-align: center; }
+.component-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 16px; padding: 0 5px; border-radius: 999px;
+  background: rgba(99,102,241,.18); color: #c7d2fe; font-size: 9px; font-weight: 700;
+  flex-shrink: 0;
+}
 .node-label {
   flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; font-size: 11px; color: #999;
 }
 .node-tag { font-size: 9px; color: #444; font-family: monospace; flex-shrink: 0; }
+.node-actions { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.node-action {
+  width: 18px; height: 18px; padding: 0; border-radius: 4px; cursor: pointer;
+  border: 1px solid #2a2a2a; background: #171717; color: #666; font-size: 10px;
+}
+.node-action:hover { color: #e5e5e5; border-color: #444; background: #202020; }
+.node-action:disabled { opacity: .3; cursor: not-allowed; }
 .children-wrap.hidden { display: none; }
 #empty { padding: 28px 16px; text-align: center; color: #444; font-size: 11px; line-height: 1.6; }
 `;
@@ -138,6 +152,8 @@ const CSS = `
 export interface LayerPanelCallbacks {
     onSelect: (el: HTMLElement, oid: string) => void;
     onHover?: (el: HTMLElement | null, oid: string) => void;
+    onMove?: (el: HTMLElement, oid: string, direction: 'up' | 'down') => void;
+    isComponentRoot?: (oid: string) => boolean;
 }
 
 export class LayerPanel {
@@ -146,8 +162,12 @@ export class LayerPanel {
     private host: HTMLElement;
     private shadow: ShadowRoot;
     private callbacks: LayerPanelCallbacks;
-    private selectedOid   = '';
+    private selectedKey   = '';
     private collapsedOids = new Set<string>();
+    private parentByOid = new Map<string, string | null>();
+    private parentByKey = new Map<string, string | null>();
+    private elementByKey = new Map<string, HTMLElement>();
+    private keyByElement = new WeakMap<HTMLElement, string>();
     private dragCleanup:  (() => void) | null = null;
     private unsubscribeLanguage: (() => void) | null = null;
 
@@ -163,10 +183,31 @@ export class LayerPanel {
     }
 
     /** Called by content.ts when the user selects an element. */
+    setSelectedElement(el: HTMLElement | null): void {
+        if (!el) return;
+        const key = this.keyByElement.get(el);
+        if (key) this.setSelectedKey(key);
+    }
+
     setSelected(oid: string): void {
-        this.selectedOid = oid;
+        const first = this.shadow.querySelector<HTMLElement>(`.tree-node[data-oid="${oid.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`);
+        const key = first?.dataset.key;
+        if (key) this.setSelectedKey(key);
+    }
+
+    private setSelectedKey(key: string): void {
+        let changed = false;
+        let current = this.parentByKey.get(key) ?? null;
+        while (current) {
+            const currentEl = this.elementByKey.get(current);
+            const currentOid = currentEl?.getAttribute(OID_ATTR);
+            if (currentOid && this.collapsedOids.delete(currentOid)) changed = true;
+            current = this.parentByKey.get(current) ?? null;
+        }
+        if (changed) this.render();
+        this.selectedKey = key;
         this.shadow.querySelectorAll('.tree-node').forEach(n => {
-            const isSelected = (n as HTMLElement).dataset.oid === oid;
+            const isSelected = (n as HTMLElement).dataset.key === key;
             n.classList.toggle('selected', isSelected);
             if (isSelected) (n as HTMLElement).scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         });
@@ -177,6 +218,19 @@ export class LayerPanel {
 
     private render(): void {
         const roots = buildTree(document.body);
+        this.parentByOid = new Map();
+        this.parentByKey = new Map();
+        this.elementByKey = new Map();
+        const visitWithKey = (nodes: TreeNode[], parentKey: string | null, parentOid: string | null) => {
+            nodes.forEach(node => {
+                this.parentByOid.set(node.oid, parentOid);
+                this.parentByKey.set(node.key, parentKey);
+                this.elementByKey.set(node.key, node.el);
+                this.keyByElement.set(node.el, node.key);
+                visitWithKey(node.children, node.key, node.oid);
+            });
+        };
+        visitWithKey(roots, null, null);
         const style = document.createElement('style');
         style.textContent = CSS;
 
@@ -209,23 +263,31 @@ export class LayerPanel {
     }
 
     private renderNodes(nodes: TreeNode[]): string {
-        return nodes.map(({ el, oid, children, depth }) => {
+        return nodes.map(({ el, oid, key, children, depth }, index) => {
             const tag        = el.tagName.toLowerCase();
             const label      = getLabel(el);
             const icon       = getTagIcon(tag);
             const hasKids    = children.length > 0;
             const collapsed  = this.collapsedOids.has(oid);
-            const selected   = oid === this.selectedOid;
+            const selected   = key === this.selectedKey;
             const indent     = depth * 14;
             const toggleCls  = hasKids ? (collapsed ? 'toggle-btn collapsed' : 'toggle-btn') : 'toggle-btn leaf';
+            const canMoveUp = index > 0;
+            const canMoveDown = index < nodes.length - 1;
+            const isComponentRoot = this.callbacks.isComponentRoot?.(oid) ?? false;
 
             return `
-              <div class="tree-node${selected ? ' selected' : ''}" data-oid="${oid}"
+              <div class="tree-node${selected ? ' selected' : ''}" data-oid="${oid}" data-key="${key}"
                    style="padding-left:${8 + indent}px">
                 <span class="${toggleCls}" data-toggle="${oid}"></span>
                 <span class="node-icon">${icon}</span>
+                ${isComponentRoot ? `<span class="component-badge" title="${t('layerComponentRoot')}">C</span>` : ''}
                 <span class="node-label" title="${label.replace(/"/g, '&quot;')}">${label}</span>
                 <span class="node-tag">${tag}</span>
+                <span class="node-actions">
+                  <button class="node-action" data-move="up" data-key="${key}" ${canMoveUp ? '' : 'disabled'} title="${t('layerMoveUp')}">↑</button>
+                  <button class="node-action" data-move="down" data-key="${key}" ${canMoveDown ? '' : 'disabled'} title="${t('layerMoveDown')}">↓</button>
+                </span>
               </div>
               ${hasKids
                 ? `<div class="children-wrap${collapsed ? ' hidden' : ''}" data-kids="${oid}">${this.renderNodes(children)}</div>`
@@ -261,6 +323,7 @@ export class LayerPanel {
             nodeEl.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const oid    = (nodeEl as HTMLElement).dataset.oid ?? '';
+                const key    = (nodeEl as HTMLElement).dataset.key ?? '';
                 const target = e.target as HTMLElement;
 
                 // Toggle if clicked on the arrow icon
@@ -276,10 +339,17 @@ export class LayerPanel {
                     return;
                 }
 
+                if (target.dataset.move === 'up' || target.dataset.move === 'down') {
+                    const moveKey = target.dataset.key ?? key;
+                    const moveEl = this.elementByKey.get(moveKey);
+                    if (moveEl) this.callbacks.onMove?.(moveEl, oid, target.dataset.move);
+                    return;
+                }
+
                 // Select element
-                const el = document.querySelector<HTMLElement>(`[${OID_ATTR}="${oid}"]`);
+                const el = this.elementByKey.get(key);
                 if (el) {
-                    this.setSelected(oid);
+                    this.setSelectedKey(key);
                     this.callbacks.onSelect(el, oid);
                 }
             });

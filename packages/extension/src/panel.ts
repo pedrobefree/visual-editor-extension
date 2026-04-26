@@ -18,6 +18,17 @@ export interface I18nInfo {
     files: Record<string, string>;
 }
 
+interface ProjectClassInfo {
+    className: string;
+    count: number;
+}
+
+interface ProjectClassBundle {
+    tag: string;
+    classes: string;
+    count: number;
+}
+
 type EditScope = 'instance' | 'component';
 export type EditResponse = { ok: boolean; error?: string };
 
@@ -32,6 +43,9 @@ export interface PanelCallbacks {
     onTextApply: (oid: string, newText: string, originalText: string, scope: EditScope) => Promise<EditResponse>;
     /** Update a specific JSX attribute (e.g. placeholder) on the element */
     onAttrApply: (oid: string, attrName: string, newValue: string, currentValue: string, scope: EditScope) => Promise<EditResponse>;
+    onInsertElement: (oid: string, preset: 'text' | 'button' | 'group' | 'image') => Promise<EditResponse>;
+    onRemoveElement: (oid: string) => Promise<EditResponse>;
+    onStartCopyStyle: (oid: string) => void;
     onClose: () => void;
 }
 
@@ -312,7 +326,10 @@ function buildColorSwatches(prefix: 'bg' | 'text' | 'border' | 'ring'): string {
           <span class="swatch-preview"></span>
           <span>${label}</span>
         </button>
-        <div class="color-popover hidden">${grid}</div>
+        <div class="color-popover hidden">
+          <input class="color-search-input" type="text" spellcheck="false" autocomplete="off" placeholder="${t('panelColorSearchPlaceholder')}" />
+          ${grid}
+        </div>
       </div>`;
 }
 
@@ -377,9 +394,16 @@ const CSS = `
   max-height: 260px; overflow: auto;
 }
 .color-popover.hidden { display: none; }
+.color-search-input {
+  width: 100%; background: #171717; border: 1px solid #2a2a2a; border-radius: 6px;
+  color: #ddd; padding: 6px 7px; font-size: 11px; outline: none; margin-bottom: 8px;
+}
+.color-search-input:focus { border-color: #6366f1; }
 .color-grid { display: flex; flex-direction: column; gap: 2px; }
 .color-row { display: flex; gap: 2px; }
+.color-row.hidden { display: none; }
 .swatch { width: 16px; height: 16px; border-radius: 3px; cursor: pointer; border: 1.5px solid transparent; transition: transform .1s, border-color .1s; flex-shrink: 0; }
+.swatch.hidden { display: none; }
 .swatch:hover { transform: scale(1.3); border-color: white; z-index: 1; position: relative; }
 .swatch.active { border-color: white; transform: scale(1.2); }
 .swatch-white { background: white; }
@@ -465,6 +489,29 @@ const CSS = `
 }
 .text-input:focus { border-color: #6366f1; }
 .text-hint { font-size: 10px; color: #444; line-height: 1.4; }
+.structure-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.structure-btn {
+  background: #1e1e1e; color: #ddd; border: 1px solid #2a2a2a; border-radius: 9px;
+  padding: 0; min-height: 38px; font-size: 11px; cursor: pointer; text-align: center;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.structure-btn:hover { background: #252525; border-color: #444; }
+.structure-btn.danger { color: #fca5a5; border-color: #4b1d1d; }
+.structure-btn.secondary { color: #c7d2fe; border-color: #3730a3; }
+.structure-btn-icon { font-size: 15px; line-height: 1; }
+.project-style-section {
+  display: flex; flex-direction: column; gap: 6px; padding: 8px 0 2px; border-top: 1px solid #1e1e1e;
+}
+.project-style-label {
+  font-size: 10px; color: #555; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+}
+.preset-list { display: flex; flex-direction: column; gap: 6px; }
+.preset-chip {
+  width: 100%; text-align: left; background: #171717; color: #cfd4ff; border: 1px solid #29295a;
+  border-radius: 8px; padding: 8px 10px; font-size: 10px; font-family: monospace; cursor: pointer;
+}
+.preset-chip:hover { background: #202040; border-color: #4f46e5; }
+.preset-meta { display: block; color: #666; font-size: 9px; margin-top: 4px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 /* Footer */
 #panel-footer { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid #1e1e1e; background: #111; flex-shrink: 0; }
 .btn { flex: 1; padding: 6px 0; border-radius: 7px; cursor: pointer; border: none; font-size: 12px; font-weight: 500; transition: all .1s; }
@@ -530,6 +577,17 @@ function buildCurrentClassChips(classes: string): string {
     ).join('')}</div>`;
 }
 
+function buildProjectSuggestionsControl(): string {
+    return `
+      <div class="project-style-section">
+        <div class="project-style-label">${t('panelProjectStyles')}</div>
+        <div class="search-wrap">
+          <input class="search-input" id="project-style-search" placeholder="${t('panelProjectStyleSearchPlaceholder')}" autocomplete="off" spellcheck="false" />
+          <div class="suggestions" id="project-style-suggestions" style="display:none"></div>
+        </div>
+      </div>`;
+}
+
 const CLASS_CATEGORIES = [
     { key: 'Layout', keywords: ['layout', 'display', 'position', 'overflow', 'z-index'], match: (c: string) => /^(block|inline|inline-block|hidden|contents|static|fixed|absolute|relative|sticky|overflow|z-)/.test(c) },
     { key: 'Flexbox & Grid', keywords: ['flex', 'grid', 'align', 'justify'], match: (c: string) => /^(flex|inline-flex|grid|inline-grid|basis|grow|shrink|justify-|items-|self-|content-|place-|grid-|col-|row-)/.test(c) },
@@ -587,11 +645,50 @@ function classTooltip(cls: string): string {
     const prefixText = prefixes
         ? prefixes.split(':').filter(Boolean).map(p => BREAKPOINT_TOOLTIPS[`${p}:`] ?? `${p}: variant`).join(' ')
         : '';
+    const textAlignMap: Record<string, string> = {
+        'text-left': 'text-align: left',
+        'text-center': 'text-align: center',
+        'text-right': 'text-align: right',
+        'text-justify': 'text-align: justify',
+        'text-start': 'text-align: start',
+        'text-end': 'text-align: end',
+    };
+    const textStyleMap: Record<string, string> = {
+        italic: 'font-style: italic',
+        'not-italic': 'font-style: normal',
+        underline: 'text-decoration-line: underline',
+        'no-underline': 'text-decoration-line: none',
+        'line-through': 'text-decoration-line: line-through',
+        uppercase: 'text-transform: uppercase',
+        lowercase: 'text-transform: lowercase',
+        capitalize: 'text-transform: capitalize',
+        'normal-case': 'text-transform: none',
+    };
+    const leadingMap: Record<string, string> = {
+        'leading-none': 'line-height: 1',
+        'leading-tight': 'line-height: 1.25',
+        'leading-snug': 'line-height: 1.375',
+        'leading-normal': 'line-height: 1.5',
+        'leading-relaxed': 'line-height: 1.625',
+        'leading-loose': 'line-height: 2',
+    };
+    const trackingMap: Record<string, string> = {
+        'tracking-tighter': 'letter-spacing: -0.05em',
+        'tracking-tight': 'letter-spacing: -0.025em',
+        'tracking-normal': 'letter-spacing: 0em',
+        'tracking-wide': 'letter-spacing: 0.025em',
+        'tracking-wider': 'letter-spacing: 0.05em',
+        'tracking-widest': 'letter-spacing: 0.1em',
+    };
     let detail = `${base}: Tailwind ${classCategory(base)} utility.`;
     if (/^2xl:/.test(cls)) detail = `${base}: ${BREAKPOINT_TOOLTIPS['2xl:']}`;
     else if (/^sm:|^md:|^lg:|^xl:/.test(cls)) detail = `${base}: ${prefixText}`;
     else if (TEXT_SIZE_VALUES[base.replace(/^text-/, '')]) detail = `${base}: ${TEXT_SIZE_VALUES[base.replace(/^text-/, '')]}`;
     else if (FONT_WEIGHT_VALUES[base.replace(/^font-/, '')]) detail = `${base}: ${FONT_WEIGHT_VALUES[base.replace(/^font-/, '')]}`;
+    else if (textAlignMap[base]) detail = `${base}: ${textAlignMap[base]}`;
+    else if (textStyleMap[base]) detail = `${base}: ${textStyleMap[base]}`;
+    else if (leadingMap[base]) detail = `${base}: ${leadingMap[base]}`;
+    else if (trackingMap[base]) detail = `${base}: ${trackingMap[base]}`;
     else if (RADIUS_VALUES[base]) detail = `${base}: ${RADIUS_VALUES[base]}`;
     else if (BORDER_WIDTH_VALUES[base]) detail = `${base}: ${BORDER_WIDTH_VALUES[base]}`;
     else if (RING_WIDTH_VALUES[base]) detail = `${base}: ${RING_WIDTH_VALUES[base]}`;
@@ -845,9 +942,23 @@ function buildScopeControl(hidden: boolean): string {
       </div>`;
 }
 
-function buildPanel(oid: string, tag: string, currentClasses: string, currentText: string, currentPlaceholder: string, gradientEditorOpen: boolean, hideScopeControl: boolean): string {
+function buildPanel(
+    oid: string,
+    tag: string,
+    currentClasses: string,
+    currentText: string,
+    currentPlaceholder: string,
+    currentSrc: string,
+    currentAlt: string,
+    gradientEditorOpen: boolean,
+    hideScopeControl: boolean,
+): string {
     const textSizes = ['text-xs','text-sm','text-base','text-lg','text-xl','text-2xl','text-3xl','text-4xl','text-5xl'];
     const fontWeights = ['font-thin','font-light','font-normal','font-medium','font-semibold','font-bold','font-extrabold','font-black'];
+    const textAlign = ['text-left','text-center','text-right','text-justify'];
+    const textStyle = ['italic','not-italic','underline','no-underline','uppercase','lowercase','capitalize','normal-case'];
+    const textLeading = ['leading-none','leading-tight','leading-snug','leading-normal','leading-relaxed','leading-loose'];
+    const textTracking = ['tracking-tighter','tracking-tight','tracking-normal','tracking-wide','tracking-wider','tracking-widest'];
     const spNums = ['0','1','2','3','4','5','6','8','10','12','16','20','24'];
     const paddings = spNums.map(n => `p-${n}`);
     const ptVals   = spNums.map(n => `pt-${n}`);
@@ -883,6 +994,7 @@ function buildPanel(oid: string, tag: string, currentClasses: string, currentTex
 
     const hasText        = currentText.trim().length > 0;
     const hasPlaceholder = currentPlaceholder.trim().length > 0;
+    const isImage = tag === 'img';
 
     // Seções colapsadas por padrão — CLASSES fica aberta
     const col = 'section-content hidden';
@@ -899,7 +1011,7 @@ function buildPanel(oid: string, tag: string, currentClasses: string, currentTex
       </div>
       <div id="panel-body">
 
-        ${(hasText || hasPlaceholder) ? `
+        ${(hasText || hasPlaceholder || isImage) ? `
         <div class="section" id="sec-content">
           <div class="${hdrCol}" data-section="content">
             ${t('panelContent')} <span class="chevron">›</span>
@@ -918,6 +1030,14 @@ function buildPanel(oid: string, tag: string, currentClasses: string, currentTex
             <input class="text-input" id="placeholder-input" type="text" value="${currentPlaceholder.replace(/"/g, '&quot;')}" spellcheck="false" style="min-height:unset;height:36px" />
             <button class="btn btn-primary" id="placeholder-apply-btn" style="flex:none;padding:5px 12px;font-size:11px">${t('panelSavePlaceholder')}</button>
             ` : ''}
+            ${isImage ? `
+            <div style="font-size:10px;color:#555;margin-top:${(hasText || hasPlaceholder) ? '10px' : '0'};margin-bottom:3px;font-weight:600;letter-spacing:.05em;text-transform:uppercase">${t('panelImageSrc')}</div>
+            <input class="text-input" id="image-src-input" type="text" value="${currentSrc.replace(/"/g, '&quot;')}" spellcheck="false" style="min-height:unset;height:36px" />
+            <button class="btn btn-primary" id="image-src-apply-btn" style="flex:none;padding:5px 12px;font-size:11px">${t('panelSaveImageSrc')}</button>
+            <div style="font-size:10px;color:#555;margin-top:10px;margin-bottom:3px;font-weight:600;letter-spacing:.05em;text-transform:uppercase">${t('panelImageAlt')}</div>
+            <input class="text-input" id="image-alt-input" type="text" value="${currentAlt.replace(/"/g, '&quot;')}" spellcheck="false" style="min-height:unset;height:36px" />
+            <button class="btn btn-primary" id="image-alt-apply-btn" style="flex:none;padding:5px 12px;font-size:11px">${t('panelSaveImageAlt')}</button>
+            ` : ''}
           </div>
         </div>
         ` : ''}
@@ -931,6 +1051,21 @@ function buildPanel(oid: string, tag: string, currentClasses: string, currentTex
           </div>
         </div>
 
+        <div class="section" id="sec-structure">
+          <div class="${hdrCol}" data-section="structure">
+            ${t('panelStructure')} <span class="chevron">›</span>
+          </div>
+          <div class="${col}">
+            <div class="structure-grid">
+              <button class="structure-btn" id="insert-text-btn" title="${t('panelInsertText')}"><span class="structure-btn-icon">T</span></button>
+              <button class="structure-btn" id="insert-button-btn" title="${t('panelInsertButton')}"><span class="structure-btn-icon">⌘</span></button>
+              <button class="structure-btn" id="insert-group-btn" title="${t('panelInsertGroup')}"><span class="structure-btn-icon">▣</span></button>
+              <button class="structure-btn" id="insert-image-btn" title="${t('panelInsertImage')}"><span class="structure-btn-icon">▧</span></button>
+              <button class="structure-btn danger" id="remove-element-btn" title="${t('panelRemoveElement')}"><span class="structure-btn-icon">⌫</span></button>
+            </div>
+          </div>
+        </div>
+
         <div class="section" id="sec-classes">
           <div class="section-header" data-section="classes">
             ${t('panelClasses')} <span class="chevron">›</span>
@@ -939,6 +1074,8 @@ function buildPanel(oid: string, tag: string, currentClasses: string, currentTex
             ${buildScopeControl(hideScopeControl)}
             ${hideScopeControl ? '' : `<span class="scope-hint">${t('panelScopeClassesHint')}</span>`}
             <div id="current-chips">${buildCurrentClassChips(currentClasses)}</div>
+            <button class="structure-btn secondary" id="copy-style-btn">${t('panelCopyStyle')}</button>
+            ${buildProjectSuggestionsControl()}
             <div class="modifier-strip">
               <div class="modifier-row">
                 <span class="modifier-label">${t('panelBreak')}</span>
@@ -979,6 +1116,10 @@ function buildPanel(oid: string, tag: string, currentClasses: string, currentTex
           <div class="${col}">
             <div class="row"><span class="row-label">${t('panelSize')}</span>${chips(textSizes)}</div>
             <div class="row"><span class="row-label">${t('panelWeight')}</span>${chips(fontWeights)}</div>
+            <div class="row"><span class="row-label">${t('panelAlign')}</span>${chips(textAlign)}</div>
+            <div class="row"><span class="row-label">${t('panelStyle')}</span>${chips(textStyle)}</div>
+            <div class="row"><span class="row-label">${t('panelLeading')}</span>${chips(textLeading)}</div>
+            <div class="row"><span class="row-label">${t('panelTracking')}</span>${chips(textTracking)}</div>
             <div class="row"><span class="row-label">${t('panelTextColor')}</span>${buildColorSwatches('text')}</div>
           </div>
         </div>
@@ -1131,12 +1272,16 @@ export class VisualEditPanel {
     private history: string[] = [];
     private i18nInfo: I18nInfo | null = null;
     private selectedLocale = '';
+    private projectClasses: ProjectClassInfo[] = [];
+    private projectBundles: ProjectClassBundle[] = [];
     private callbacks: PanelCallbacks;
     private panelPosition: { left: number; top: number } | null = null;
     private dragCleanup: (() => void) | null = null;
     /** DOM text content at the moment the panel opened — used for prop resolution. */
     private originalText = '';
     private originalPlaceholder = '';
+    private originalSrc = '';
+    private originalAlt = '';
     private editScope: EditScope = 'instance';
     private forceScope: EditScope | null = null;
     private hideScopeControl = false;
@@ -1178,10 +1323,14 @@ export class VisualEditPanel {
         this.history = [];
         this.i18nInfo = null;
         this.selectedLocale = '';
+        this.projectClasses = [];
+        this.projectBundles = [];
         // Snapshot the current DOM text so the bridge can locate the prop in
         // the parent component (e.g. label="First name" in ContactPage.tsx).
         this.originalText = this.currentText();
         this.originalPlaceholder = this.currentPlaceholder();
+        this.originalSrc = this.currentSrc();
+        this.originalAlt = this.currentAlt();
         this.forceScope = options.forceScope ?? null;
         this.hideScopeControl = options.hideScopeControl ?? false;
         this.editScope = this.forceScope ?? 'instance';
@@ -1193,6 +1342,22 @@ export class VisualEditPanel {
         injectClassesForPreview(el.className);
         this.render();
         this.loadI18n(oid); // async — popula seção depois de renderizar
+        void this.loadProjectClassSuggestions();
+    }
+
+    private async loadProjectClassSuggestions(): Promise<void> {
+        try {
+            const res = await fetch(`${BRIDGE}/classes?tag=${encodeURIComponent(this.elementTag)}&limit=80`, {
+                signal: AbortSignal.timeout(2500),
+            });
+            const data = await res.json() as { ok: boolean; classes?: ProjectClassInfo[]; bundles?: ProjectClassBundle[] };
+            if (!data.ok) return;
+            this.projectClasses = (data.classes ?? []).slice(0, 18);
+            this.projectBundles = (data.bundles ?? []).slice(0, 6);
+            if (this.isVisible()) this.render();
+        } catch {
+            // keep panel usable when bridge is offline
+        }
     }
 
     private async loadI18n(oid: string): Promise<void> {
@@ -1323,6 +1488,14 @@ export class VisualEditPanel {
         return this.element?.getAttribute('placeholder') ?? '';
     }
 
+    private currentSrc(): string {
+        return this.element?.getAttribute('src') ?? '';
+    }
+
+    private currentAlt(): string {
+        return this.element?.getAttribute('alt') ?? '';
+    }
+
     private hasSharedOid(): boolean {
         return document.querySelectorAll(`[data-oid="${this.oid.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`).length > 1;
     }
@@ -1338,7 +1511,17 @@ export class VisualEditPanel {
         const style = document.createElement('style');
         style.textContent = CSS;
         const wrapper = document.createElement('div');
-        wrapper.innerHTML = buildPanel(this.oid, tag, this.pendingClasses, this.currentText(), this.currentPlaceholder(), this.gradientEditorOpen, this.hideScopeControl);
+        wrapper.innerHTML = buildPanel(
+            this.oid,
+            tag,
+            this.pendingClasses,
+            this.currentText(),
+            this.currentPlaceholder(),
+            this.currentSrc(),
+            this.currentAlt(),
+            this.gradientEditorOpen,
+            this.hideScopeControl,
+        );
         this.shadow.innerHTML = '';
         this.shadow.appendChild(style);
         this.shadow.appendChild(wrapper);
@@ -1362,6 +1545,10 @@ export class VisualEditPanel {
         const autoHdr = this.shadow.querySelector(`#sec-${autoSection} .section-header`);
         autoContent?.classList.remove('hidden');
         autoHdr?.classList.remove('collapsed');
+        const structureContent = this.shadow.querySelector('#sec-structure .section-content');
+        const structureHdr = this.shadow.querySelector('#sec-structure .section-header');
+        structureContent?.classList.remove('hidden');
+        structureHdr?.classList.remove('collapsed');
     }
 
     private syncActiveChips(classes: string): void {
@@ -1709,7 +1896,12 @@ export class VisualEditPanel {
                 const popover = picker.querySelector('.color-popover');
                 const willOpen = popover?.classList.contains('hidden') ?? false;
                 this.shadow.querySelectorAll('.color-popover').forEach(el => el.classList.add('hidden'));
-                if (willOpen) popover?.classList.remove('hidden');
+                if (willOpen) {
+                    popover?.querySelectorAll<HTMLElement>('.swatch, .color-row').forEach(el => el.classList.remove('hidden'));
+                    const search = popover?.querySelector<HTMLInputElement>('.color-search-input');
+                    if (search) search.value = '';
+                    popover?.classList.remove('hidden');
+                }
             });
         });
 
@@ -1725,6 +1917,25 @@ export class VisualEditPanel {
                     this.toggleClass(cls);
                 }
                 (swatch as HTMLElement).closest('.color-popover')?.classList.add('hidden');
+            });
+        });
+
+        this.shadow.querySelectorAll('.color-search-input').forEach(inputEl => {
+            inputEl.addEventListener('input', () => {
+                const input = inputEl as HTMLInputElement;
+                const query = input.value.trim().toLowerCase();
+                const popover = input.closest('.color-popover');
+                if (!popover) return;
+                popover.querySelectorAll<HTMLElement>('.color-row').forEach(row => {
+                    let hasVisible = false;
+                    row.querySelectorAll<HTMLElement>('.swatch').forEach(swatch => {
+                        const label = `${swatch.dataset.class ?? ''} ${swatch.title ?? ''}`.toLowerCase();
+                        const visible = !query || label.includes(query);
+                        swatch.classList.toggle('hidden', !visible);
+                        if (visible) hasVisible = true;
+                    });
+                    row.classList.toggle('hidden', !hasVisible);
+                });
             });
         });
 
@@ -1774,10 +1985,14 @@ export class VisualEditPanel {
         // ── Class search ──────────────────────────────────────────────────
         const searchInput = this.shadow.querySelector('#class-search') as HTMLInputElement;
         const suggBox = this.shadow.querySelector('#suggestions') as HTMLElement;
+        const projectStyleInput = this.shadow.querySelector('#project-style-search') as HTMLInputElement | null;
+        const projectStyleBox = this.shadow.querySelector('#project-style-suggestions') as HTMLElement | null;
 
         // Prefixos relevantes por tipo de elemento — usados para ordenar sugestões
         const TEXT_TAGS = new Set(['span','p','h1','h2','h3','h4','h5','h6','a','label','li','td','th','dt','dd','caption','figcaption','blockquote','cite','em','strong','small','b','i','u','s']);
         const IMG_TAGS  = new Set(['img','picture','figure','video','canvas','svg']);
+
+        const projectClassNames = this.projectClasses.map(item => item.className);
 
         function relevantPrefixesForTag(tag: string): string[] {
             if (TEXT_TAGS.has(tag)) return ['text-','font-','tracking-','leading-','uppercase','lowercase','capitalize','underline','truncate','whitespace-'];
@@ -1797,20 +2012,32 @@ export class VisualEditPanel {
             if (!q) {
                 // Sem query: classes do elemento + sugestões relevantes ao tipo de tag
                 const elementOnly = elementClasses.slice(0, 8);
+                const projectSameTag = projectClassNames
+                    .filter(c => !active.has(c))
+                    .slice(0, 8);
                 const relevant = ALL_CLASSES
-                    .filter(c => !active.has(c) && relevantPrefixes.some(p => c.startsWith(p)))
+                    .filter(c => !active.has(c) && !projectSameTag.includes(c) && relevantPrefixes.some(p => c.startsWith(p)))
                     .slice(0, 8);
                 const others = ALL_CLASSES.filter(c => !active.has(c) && !relevant.includes(c)).slice(0, 4);
-                matches = [...elementOnly, ...relevant, ...others];
+                matches = [...elementOnly, ...projectSameTag, ...relevant, ...others];
             } else {
                 // Ranking: exact > active/relevant > category match > contains.
                 type Scored = { c: string; score: number };
-                const scored: Scored[] = [];
+                const scored = new Map<string, number>();
+                const pushScore = (cls: string, score: number) => {
+                    scored.set(cls, Math.max(score, scored.get(cls) ?? 0));
+                };
                 // Element's own active classes
                 for (const c of elementClasses) {
                     const categoryMatch = categoryMatchesQuery(c, q);
                     if (!c.includes(q) && !categoryMatch) continue;
-                    scored.push({ c, score: c === q ? 95 : c.startsWith(q) ? 70 : categoryMatch ? 55 : 40 });
+                    pushScore(c, c === q ? 95 : c.startsWith(q) ? 70 : categoryMatch ? 55 : 40);
+                }
+                for (const c of projectClassNames) {
+                    const categoryMatch = categoryMatchesQuery(c, q);
+                    if (!c.includes(q) && !categoryMatch) continue;
+                    if (active.has(c)) continue;
+                    pushScore(c, c === q ? 98 : c.startsWith(q) ? 78 : categoryMatch ? 60 : 42);
                 }
                 // ALL_CLASSES
                 for (const c of ALL_CLASSES) {
@@ -1819,10 +2046,12 @@ export class VisualEditPanel {
                     if (active.has(c)) continue; // already in element, handled above
                     const isRelevant = relevantPrefixes.some(p => c.startsWith(p));
                     let score = c === q ? 100 : c.startsWith(q) ? (isRelevant ? 60 : 50) : categoryMatch ? (isRelevant ? 45 : 35) : (isRelevant ? 30 : 10);
-                    scored.push({ c, score });
+                    pushScore(c, score);
                 }
-                scored.sort((a, b) => b.score - a.score);
-                matches = scored.slice(0, 20).map(s => s.c);
+                matches = Array.from(scored.entries())
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 20)
+                    .map(([cls]) => cls);
             }
 
             if (!matches.length) { suggBox.style.display = 'none'; return; }
@@ -1936,6 +2165,79 @@ export class VisualEditPanel {
             });
         };
 
+        const showProjectStyles = (q: string) => {
+            if (!projectStyleBox) return;
+            const query = q.trim().toLowerCase();
+            const bundles = this.projectBundles
+                .filter(bundle => !query || bundle.classes.toLowerCase().includes(query))
+                .slice(0, 8);
+            const classes = this.projectClasses
+                .filter(item => !query || item.className.toLowerCase().includes(query))
+                .slice(0, 16);
+
+            if (!bundles.length && !classes.length) {
+                projectStyleBox.style.display = 'none';
+                return;
+            }
+
+            projectStyleBox.innerHTML = `
+              ${bundles.length ? `
+                <div class="suggestion-group">${escapeHtml(t('panelProjectBundlesGroup'))}</div>
+                ${bundles.map(bundle => `
+                  <div class="suggestion" data-project-kind="bundle" data-project-value="${escapeHtml(bundle.classes)}" title="${escapeHtml(bundle.classes)}">
+                    <span>${escapeHtml(bundle.classes)}</span>
+                    <span class="suggestion-badge">${escapeHtml(t('panelPresetUsed', { count: bundle.count }))}</span>
+                  </div>
+                `).join('')}
+              ` : ''}
+              ${classes.length ? `
+                <div class="suggestion-group">${escapeHtml(t('panelProjectClassesGroup'))}</div>
+                ${classes.map(item => `
+                  <div class="suggestion" data-project-kind="class" data-project-value="${escapeHtml(item.className)}" title="${escapeHtml(classTooltip(item.className))}">
+                    <span>${escapeHtml(item.className)}</span>
+                    <span class="suggestion-badge">${item.count}</span>
+                  </div>
+                `).join('')}
+              ` : ''}
+            `;
+            projectStyleBox.style.display = 'block';
+
+            projectStyleBox.querySelectorAll<HTMLElement>('.suggestion[data-project-kind]').forEach(item => {
+                item.addEventListener('mouseenter', () => {
+                    if (!this.element) return;
+                    const kind = item.dataset.projectKind ?? '';
+                    const value = item.dataset.projectValue ?? '';
+                    if (!value) return;
+                    if (kind === 'bundle') {
+                        injectClassesForPreview(value);
+                        this.element.className = value;
+                    } else {
+                        injectClassForPreview(value);
+                        this.element.className = `${this.pendingClasses} ${value}`.trim();
+                    }
+                });
+                item.addEventListener('mouseleave', () => {
+                    if (this.element) this.element.className = this.pendingClasses;
+                });
+                item.addEventListener('click', () => {
+                    const kind = item.dataset.projectKind ?? '';
+                    const value = item.dataset.projectValue ?? '';
+                    if (!value) return;
+                    if (kind === 'bundle') {
+                        this.pushClassHistory();
+                        this.pendingClasses = value;
+                        injectClassesForPreview(value);
+                        if (this.element) this.element.className = value;
+                        this.syncActiveChips(value);
+                    } else {
+                        this.toggleClass(value);
+                    }
+                    if (projectStyleInput) projectStyleInput.value = '';
+                    projectStyleBox.style.display = 'none';
+                });
+            });
+        };
+
         searchInput?.addEventListener('focus', () => {
             const q = searchInput.value.trim().toLowerCase();
             if (q) showSuggestions(q);
@@ -1957,11 +2259,24 @@ export class VisualEditPanel {
             setTimeout(() => { suggBox.style.display = 'none'; }, 180);
         });
 
+        projectStyleInput?.addEventListener('focus', () => showProjectStyles(projectStyleInput.value));
+        projectStyleInput?.addEventListener('input', () => showProjectStyles(projectStyleInput.value));
+        projectStyleInput?.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && projectStyleBox) {
+                projectStyleBox.style.display = 'none';
+                projectStyleInput.value = '';
+            }
+        });
+        projectStyleInput?.addEventListener('blur', () => {
+            setTimeout(() => { if (projectStyleBox) projectStyleBox.style.display = 'none'; }, 180);
+        });
+
         // Fecha dropdown ao clicar em qualquer área do panel fora do search-wrap
         // Nota: usamos pointerdown (antes do blur) para evitar race condition
         panelEl?.addEventListener('pointerdown', (e: Event) => {
             if (!(e.target as HTMLElement).closest('.search-wrap')) {
                 suggBox.style.display = 'none';
+                if (projectStyleBox) projectStyleBox.style.display = 'none';
             }
             if (!(e.target as HTMLElement).closest('.color-picker')) {
                 this.shadow.querySelectorAll('.color-popover').forEach(el => el.classList.add('hidden'));
@@ -2012,6 +2327,67 @@ export class VisualEditPanel {
             placeholderBtn.disabled = false;
             placeholderBtn.textContent = t('panelSavePlaceholder');
             this.showToast(result.ok ? t('panelPlaceholderSaved') : result.error ?? t('panelPlaceholderSaveError'), result.ok ? 'success' : 'error');
+        });
+
+        const imageSrcInput = this.shadow.querySelector('#image-src-input') as HTMLInputElement | null;
+        const imageSrcBtn = this.shadow.querySelector('#image-src-apply-btn') as HTMLButtonElement | null;
+        imageSrcInput?.addEventListener('input', () => {
+            if (this.element) this.element.setAttribute('src', imageSrcInput.value);
+        });
+        imageSrcBtn?.addEventListener('click', async () => {
+            if (!imageSrcInput) return;
+            imageSrcBtn.disabled = true;
+            imageSrcBtn.textContent = '…';
+            const result = await this.callbacks.onAttrApply(this.oid, 'src', imageSrcInput.value, this.originalSrc, this.editScope);
+            imageSrcBtn.disabled = false;
+            imageSrcBtn.textContent = t('panelSaveImageSrc');
+            if (result.ok) this.originalSrc = imageSrcInput.value;
+            this.showToast(result.ok ? t('panelImageSrcSaved') : result.error ?? t('panelImageSrcSaveError'), result.ok ? 'success' : 'error');
+        });
+
+        const imageAltInput = this.shadow.querySelector('#image-alt-input') as HTMLInputElement | null;
+        const imageAltBtn = this.shadow.querySelector('#image-alt-apply-btn') as HTMLButtonElement | null;
+        imageAltInput?.addEventListener('input', () => {
+            if (this.element) this.element.setAttribute('alt', imageAltInput.value);
+        });
+        imageAltBtn?.addEventListener('click', async () => {
+            if (!imageAltInput) return;
+            imageAltBtn.disabled = true;
+            imageAltBtn.textContent = '…';
+            const result = await this.callbacks.onAttrApply(this.oid, 'alt', imageAltInput.value, this.originalAlt, this.editScope);
+            imageAltBtn.disabled = false;
+            imageAltBtn.textContent = t('panelSaveImageAlt');
+            if (result.ok) this.originalAlt = imageAltInput.value;
+            this.showToast(result.ok ? t('panelImageAltSaved') : result.error ?? t('panelImageAltSaveError'), result.ok ? 'success' : 'error');
+        });
+
+        // ── Structure actions ────────────────────────────────────────────
+        const bindStructureAction = (
+            selector: string,
+            action: () => Promise<EditResponse>,
+            successMessage: string,
+        ) => {
+            const button = this.shadow.querySelector(selector) as HTMLButtonElement | null;
+            button?.addEventListener('click', async () => {
+                button.disabled = true;
+                const original = button.textContent ?? '';
+                button.textContent = '…';
+                const result = await action();
+                button.disabled = false;
+                button.textContent = original;
+                this.showToast(result.ok ? successMessage : result.error ?? t('panelStructureError'), result.ok ? 'success' : 'error');
+            });
+        };
+
+        bindStructureAction('#insert-text-btn', () => this.callbacks.onInsertElement(this.oid, 'text'), t('panelInsertSuccess'));
+        bindStructureAction('#insert-button-btn', () => this.callbacks.onInsertElement(this.oid, 'button'), t('panelInsertSuccess'));
+        bindStructureAction('#insert-group-btn', () => this.callbacks.onInsertElement(this.oid, 'group'), t('panelInsertSuccess'));
+        bindStructureAction('#insert-image-btn', () => this.callbacks.onInsertElement(this.oid, 'image'), t('panelInsertSuccess'));
+        bindStructureAction('#remove-element-btn', () => this.callbacks.onRemoveElement(this.oid), t('panelRemoveSuccess'));
+
+        this.shadow.querySelector('#copy-style-btn')?.addEventListener('click', () => {
+            this.callbacks.onStartCopyStyle(this.oid);
+            this.showToast(t('panelCopyStylePending'), 'success');
         });
 
         // ── Class apply ───────────────────────────────────────────────────
