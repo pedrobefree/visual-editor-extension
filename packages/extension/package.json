@@ -1,0 +1,15 @@
+{
+  "name": "@visual-edit/extension",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "build": "bun run build.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "bun-types": "latest",
+    "typescript": "^5.5.4",
+    "@types/chrome": "^0.0.317"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "visual-edit-kit",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "typecheck": "bun run --filter '*' typecheck",
+    "test": "bun test"
+  }
+}

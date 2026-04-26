@@ -1,0 +1,19 @@
+{
+  "name": "@visual-edit/bridge",
+  "version": "0.0.1",
+  "type": "module",
+  "bin": { "visual-edit-bridge": "./src/index.ts" },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@visual-edit/parser": "workspace:*",
+    "chokidar": "^4.0.3",
+    "hono": "^4.7.7"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "typescript": "^5.5.4"
+  }
+}
