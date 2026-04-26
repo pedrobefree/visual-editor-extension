@@ -7,31 +7,64 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      width: 240px;
+      width: 280px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #111;
-      color: #f5f5f5;
+      background: #f7f8fc;
+      color: #111827;
     }
     .header {
       display: flex;
       align-items: center;
+      justify-content: space-between;
       gap: 10px;
-      padding: 14px 16px 10px;
-      border-bottom: 1px solid #222;
+      padding: 12px 14px;
+      background: #0205D3;
+      border-bottom: 1px solid rgba(255,255,255,.08);
     }
-    .logo {
-      width: 22px; height: 22px;
-      background: linear-gradient(135deg, #6366f1, #8b5cf6);
-      border-radius: 6px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 12px;
+    .brand {
+      display: flex;
+      align-items: center;
+      min-width: 0;
     }
-    .title { font-size: 14px; font-weight: 600; }
-    .body { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+    .brand-logo {
+      height: 26px;
+      width: auto;
+      display: block;
+    }
+    .lang-switcher {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .lang-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 7px;
+      border: 1px solid rgba(255,255,255,.28);
+      background: rgba(255,255,255,.14);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background .15s, border-color .15s, transform .15s;
+      overflow: hidden;
+    }
+    .lang-btn:hover { background: rgba(255,255,255,.22); border-color: rgba(255,255,255,.42); }
+    .lang-btn.active { background: rgba(255,255,255,.28); border-color: #fff; }
+    .lang-btn:active { transform: translateY(1px); }
+    .lang-btn img {
+      width: 20px;
+      height: 14px;
+      border-radius: 2px;
+      display: block;
+    }
+    .body { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+    .title { font-size: 13px; font-weight: 700; color: #111827; }
     .toggle-row {
       display: flex; align-items: center; justify-content: space-between;
     }
-    .toggle-label { font-size: 13px; color: #ccc; }
+    .toggle-label { font-size: 13px; color: #374151; }
     .toggle {
       position: relative; width: 40px; height: 22px;
       cursor: pointer;
@@ -39,7 +72,7 @@
     .toggle input { opacity: 0; width: 0; height: 0; }
     .slider {
       position: absolute; inset: 0;
-      background: #333; border-radius: 22px;
+      background: #d1d5db; border-radius: 22px;
       transition: .2s;
     }
     .slider:before {
@@ -56,32 +89,44 @@
       font-size: 11px;
       padding: 6px 10px;
       border-radius: 6px;
-      background: #1a1a1a;
-      color: #888;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      color: #6b7280;
     }
-    .status.online { color: #4ade80; }
-    .status.offline { color: #f87171; }
-    .tip { font-size: 11px; color: #555; line-height: 1.5; }
+    .status.online { color: #16a34a; }
+    .status.offline { color: #dc2626; }
+    .tip { font-size: 11px; color: #6b7280; line-height: 1.5; }
     .shortcut {
-      font-size: 11px; color: #666;
+      font-size: 11px; color: #4b5563;
       display: flex; flex-direction: column; gap: 4px;
     }
     .key {
       display: inline-block;
-      background: #222; border: 1px solid #333;
+      background: #ffffff; border: 1px solid #d1d5db;
       border-radius: 3px; padding: 1px 5px;
       font-family: monospace; font-size: 10px;
+      color: #374151;
     }
   </style>
 </head>
 <body>
   <div class="header">
-    <div class="logo">✏</div>
-    <span class="title">Visual Edit</span>
+    <div class="brand">
+      <img class="brand-logo" src="logo-white.png" alt="Befree" />
+    </div>
+    <div class="lang-switcher" aria-label="Language selector">
+      <button class="lang-btn active" id="langPt" type="button" title="Português (Brasil)" aria-label="Português (Brasil)">
+        <img src="https://flagcdn.com/w20/br.png" alt="PT" />
+      </button>
+      <button class="lang-btn" id="langEn" type="button" title="English (US)" aria-label="English (US)">
+        <img src="https://flagcdn.com/w20/us.png" alt="EN" />
+      </button>
+    </div>
   </div>
   <div class="body">
+    <div class="title" data-i18n="popupTitle">Visual Edit</div>
     <div class="toggle-row">
-      <span class="toggle-label">Ativar edição</span>
+      <span class="toggle-label" data-i18n="enableEditing">Ativar edição</span>
       <label class="toggle">
         <input type="checkbox" id="enableToggle" />
         <span class="slider"></span>
@@ -89,10 +134,10 @@
     </div>
     <div class="status" id="bridgeStatus">Verificando bridge...</div>
     <div class="shortcut">
-      <span><span class="key">hover</span> — destaca elemento</span>
-      <span><span class="key">click</span> — abre painel de estilos</span>
-      <span><span class="key">dbl-click</span> — edita texto inline</span>
-      <span><span class="key">Esc</span> — deseleciona</span>
+      <span><span class="key">hover</span> — <span data-i18n="tipHover">destaca elemento</span></span>
+      <span><span class="key">click</span> — <span data-i18n="tipClick">abre painel de estilos</span></span>
+      <span><span class="key">dbl-click</span> — <span data-i18n="tipDblClick">edita texto inline</span></span>
+      <span><span class="key">Esc</span> — <span data-i18n="tipEsc">deseleciona</span></span>
     </div>
   </div>
   <script src="popup.js"></script>

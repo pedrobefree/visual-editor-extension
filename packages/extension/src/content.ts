@@ -3,6 +3,7 @@ import { VisualEditToolbar } from './toolbar';
 import { LayerPanel } from './layer-panel';
 import { ThemePanel } from './theme-panel';
 import { ComponentsPanel } from './components-panel';
+import { loadLanguage, t } from './i18n';
 
 const BRIDGE = 'http://localhost:5179';
 const OID_ATTR = 'data-oid';
@@ -281,7 +282,7 @@ async function bridgeEdit(oid: string, kind: string, payload: string, currentTex
         const data = await res.json();
         return { ok: data.ok === true, error: data.error };
     } catch {
-        return { ok: false, error: 'Bridge offline?' };
+        return { ok: false, error: t('bridgeOfflineShort') };
     }
 }
 
@@ -296,7 +297,7 @@ async function bridgeEditAttr(oid: string, propName: string, payload: string, cu
         const data = await res.json();
         return { ok: data.ok === true, error: data.error };
     } catch {
-        return { ok: false, error: 'Bridge offline?' };
+        return { ok: false, error: t('bridgeOfflineShort') };
     }
 }
 
@@ -317,8 +318,8 @@ function startTextEdit(el: HTMLElement): void {
 
         const newText = el.textContent ?? '';
         if (save && newText !== originalText) {
-            const result = await bridgeEdit(oid, 'text', newText, originalText, 'instance');
-            showPageToast(result.ok ? `Texto salvo ✓` : result.error ?? 'Erro ao salvar texto', result.ok ? 'success' : 'error');
+        const result = await bridgeEdit(oid, 'text', newText, originalText, 'instance');
+            showPageToast(result.ok ? t('panelTextSaved') : result.error ?? t('panelTextSaveError'), result.ok ? 'success' : 'error');
         } else if (!save) {
             el.textContent = originalText;
         }
@@ -433,7 +434,7 @@ function onClick(e: MouseEvent): void {
     const duplicates = document.querySelectorAll(`[${OID_ATTR}="${oid}"]`).length;
     if (duplicates > 1) {
         showPageToast(
-            `⚠️ Componente reutilizado — ${duplicates} instâncias compartilham este template. Editar afetará todas.`,
+            t('reusedComponentWarning', { count: duplicates }),
             'error',
         );
     }
@@ -536,18 +537,18 @@ function enable(): void {
                         const elements = elementsForOids(oids);
                         const first = elements[0];
                         if (!first) {
-                            showPageToast('Nenhuma instância desse componente nesta página', 'error');
+                            showPageToast(t('noInstancesOnPage'), 'error');
                             return;
                         }
                         first.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
                         showComponentOverlays(elements);
                         selectElement(first, first.getAttribute(OID_ATTR) ?? '');
-                        showPageToast(`${componentName}: ${elements.length} instância(s) na página`, 'success');
+                        showPageToast(t('instancesOnPage', { name: componentName, count: elements.length }), 'success');
                     },
                     onOpenPreview: (path, componentName) => {
                         const url = new URL(path, window.location.origin);
                         window.open(url.toString(), '_blank', 'noopener,noreferrer');
-                        showPageToast(`${componentName}: preview aberto no browser`, 'success');
+                        showPageToast(t('previewOpenedBrowser', { name: componentName }), 'success');
                     },
                 });
                 toolbar?.setComponentsActive(true);
@@ -561,7 +562,7 @@ function enable(): void {
         },
     });
 
-    showPageToast('Visual Edit ativado', 'success');
+    showPageToast(t('visualEditEnabled'), 'success');
 }
 
 function disable(): void {
@@ -590,7 +591,7 @@ function disable(): void {
     responsiveStyle?.remove();
     responsiveStyle = null;
 
-    showPageToast('Visual Edit desativado', 'error');
+    showPageToast(t('visualEditDisabled'), 'error');
 }
 
 /* ── Messages from popup / background ── */
@@ -600,6 +601,7 @@ chrome.runtime.onMessage.addListener((msg) => {
 });
 
 /* ── Restore state on page load ── */
+void loadLanguage();
 chrome.storage.local.get('enabled', (stored) => {
     if (stored.enabled) enable();
 });

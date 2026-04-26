@@ -1,9 +1,34 @@
 export {};
 
+import { loadLanguage, setLanguage as persistLanguage, t, type Language } from './i18n';
+
 const BRIDGE = 'http://localhost:5179';
 
 const toggle = document.getElementById('enableToggle') as HTMLInputElement;
 const statusEl = document.getElementById('bridgeStatus') as HTMLElement;
+const langPtBtn = document.getElementById('langPt') as HTMLButtonElement | null;
+const langEnBtn = document.getElementById('langEn') as HTMLButtonElement | null;
+let currentLanguage: Language = 'pt-BR';
+let bridgeOnline = false;
+
+function applyTranslations(): void {
+    document.documentElement.lang = currentLanguage;
+    document.querySelectorAll<HTMLElement>('[data-i18n]').forEach(el => {
+        const key = el.dataset.i18n ?? '';
+        if (key) el.textContent = t(key);
+    });
+    if (statusEl) {
+        statusEl.textContent = bridgeOnline ? t('bridgeOnline') : t('bridgeOffline');
+    }
+    langPtBtn?.classList.toggle('active', currentLanguage === 'pt-BR');
+    langEnBtn?.classList.toggle('active', currentLanguage === 'en-US');
+}
+
+async function setLanguage(language: Language): Promise<void> {
+    currentLanguage = language;
+    await persistLanguage(language);
+    applyTranslations();
+}
 
 async function checkBridge(): Promise<boolean> {
     try {
@@ -41,17 +66,23 @@ async function sendToActiveTab(type: string): Promise<void> {
 }
 
 async function init() {
-    const [online, stored] = await Promise.all([
+    const [online, stored, language] = await Promise.all([
         checkBridge(),
-        chrome.storage.local.get('enabled'),
+        chrome.storage.local.get(['enabled']),
+        loadLanguage(),
     ]);
 
-    statusEl.textContent = online
-        ? '● Bridge conectado'
-        : '● Bridge offline — rode: bun run bridge';
+    bridgeOnline = online;
+    currentLanguage = language;
+
+    statusEl.textContent = t(online ? 'bridgeOnline' : 'bridgeOffline');
     statusEl.className = `status ${online ? 'online' : 'offline'}`;
 
     toggle.checked = Boolean(stored.enabled);
+    applyTranslations();
+
+    langPtBtn?.addEventListener('click', () => { void setLanguage('pt-BR'); });
+    langEnBtn?.addEventListener('click', () => { void setLanguage('en-US'); });
 
     toggle.addEventListener('change', async () => {
         await chrome.storage.local.set({ enabled: toggle.checked });

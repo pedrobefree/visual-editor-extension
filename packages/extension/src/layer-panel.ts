@@ -5,6 +5,7 @@
    ----------------------------------------------------------------------- */
 
 import { attachDrag } from './drag-util';
+import { subscribeLanguageChange, t } from './i18n';
 
 const OID_ATTR = 'data-oid';
 
@@ -148,6 +149,7 @@ export class LayerPanel {
     private selectedOid   = '';
     private collapsedOids = new Set<string>();
     private dragCleanup:  (() => void) | null = null;
+    private unsubscribeLanguage: (() => void) | null = null;
 
     constructor(callbacks: LayerPanelCallbacks) {
         this.callbacks = callbacks;
@@ -156,6 +158,7 @@ export class LayerPanel {
         this.host.id = LayerPanel.HOST_ID;
         this.shadow = this.host.attachShadow({ mode: 'closed' });
         document.body.appendChild(this.host);
+        this.unsubscribeLanguage = subscribeLanguageChange(() => this.render());
         this.render();
     }
 
@@ -179,14 +182,14 @@ export class LayerPanel {
 
         const bodyHtml = roots.length
             ? this.renderNodes(roots)
-            : '<div id="empty">Nenhum elemento com<br><code>data-oid</code> encontrado.<br>Certifique-se de que o<br>OID plugin está ativo.</div>';
+            : `<div id="empty">${t('layerEmpty')}</div>`;
 
         const wrapper = document.createElement('div');
         wrapper.innerHTML = `
           <div id="layer-panel">
             <div id="layer-header">
-              <span class="layer-title">Árvore de elementos</span>
-              <button id="refresh-btn" title="Atualizar árvore">↺</button>
+              <span class="layer-title">${t('layerTitle')}</span>
+              <button id="refresh-btn" title="${t('layerRefresh')}">↺</button>
             </div>
             <div id="layer-body">${bodyHtml}</div>
           </div>`;
@@ -285,6 +288,7 @@ export class LayerPanel {
 
     destroy(): void {
         this.callbacks.onHover?.(null, '');
+        this.unsubscribeLanguage?.();
         this.dragCleanup?.();
         this.host.remove();
     }

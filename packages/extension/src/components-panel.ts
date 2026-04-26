@@ -7,6 +7,7 @@
    ----------------------------------------------------------------------- */
 
 import { attachDrag } from './drag-util';
+import { subscribeLanguageChange, t } from './i18n';
 
 const BRIDGE = 'http://localhost:5179';
 const OID_ATTR = 'data-oid';
@@ -117,6 +118,9 @@ export class ComponentsPanel {
     private query = '';
     private searchValue = '';
     private dragCleanup: (() => void) | null = null;
+    private state: 'loading' | 'error' | 'ready' = 'loading';
+    private stateMessage = '';
+    private unsubscribeLanguage: (() => void) | null = null;
 
     constructor(callbacks: ComponentsPanelCallbacks) {
         this.callbacks = callbacks;
@@ -125,22 +129,28 @@ export class ComponentsPanel {
         this.host.id = ComponentsPanel.HOST_ID;
         this.shadow = this.host.attachShadow({ mode: 'closed' });
         document.body.appendChild(this.host);
+        this.unsubscribeLanguage = subscribeLanguageChange(() => {
+            if (this.state === 'ready') this.render();
+            else this.renderState(this.state, this.stateMessage);
+        });
         this.renderState('loading');
         this.loadComponents();
     }
 
     private renderState(state: 'loading' | 'error', msg = ''): void {
+        this.state = state;
+        this.stateMessage = msg;
         this.shadow.innerHTML = '';
         const style = document.createElement('style');
         style.textContent = CSS;
         const messages: Record<string, string> = {
-            loading: 'Carregando componentes…',
-            error:   msg || 'Bridge offline.',
+            loading: t('componentsLoading'),
+            error:   msg || t('componentsError'),
         };
         const wrapper = document.createElement('div');
         wrapper.innerHTML = `
           <div id="comp-panel">
-            <div id="comp-header"><span class="comp-title">Componentes</span></div>
+            <div id="comp-header"><span class="comp-title">${t('componentsTitle')}</span></div>
             <div id="comp-body"><div class="state-msg state-${state}">${messages[state]}</div></div>
           </div>`;
         this.shadow.appendChild(style);
@@ -156,9 +166,10 @@ export class ComponentsPanel {
             if (!data.ok || !data.components) { this.renderState('error', data.error); return; }
             this.components = data.components;
             await this.loadPresence();
+            this.state = 'ready';
             this.render();
         } catch {
-            this.renderState('error', 'Bridge offline — inicie o bridge com `visual-edit-bridge`.');
+            this.renderState('error', t('componentsBridgeOffline'));
         }
     }
 
@@ -219,13 +230,13 @@ export class ComponentsPanel {
                 <div class="comp-info">
                   <div class="comp-name">${c.name}</div>
                   <div class="comp-path">${c.relPath}</div>
-                  ${count ? `<span class="badge-on-page">${count} na página</span>` : ''}
+                  ${count ? `<span class="badge-on-page">${t('componentsOnPageCount', { count })}</span>` : ''}
                 </div>
                 <div class="comp-actions">
                   ${count
-                    ? `<button class="action-btn edit-btn" data-file="${c.filePath}" data-name="${c.name}" title="Editar instâncias nesta página">Editar</button>`
-                    : `<button class="action-btn preview-btn" data-file="${c.filePath}" data-name="${c.name}" title="Abrir preview no browser">Browser</button>`}
-                  <button class="action-btn open-btn" data-file="${c.filePath}" title="Abrir no editor">↗</button>
+                    ? `<button class="action-btn edit-btn" data-file="${c.filePath}" data-name="${c.name}" title="${t('componentsEditTitle')}">${t('componentsEdit')}</button>`
+                    : `<button class="action-btn preview-btn" data-file="${c.filePath}" data-name="${c.name}" title="${t('componentsPreviewTitle')}">${t('componentsBrowser')}</button>`}
+                  <button class="action-btn open-btn" data-file="${c.filePath}" title="${t('componentsOpenEditorTitle')}">↗</button>
                 </div>
               </div>`;
         };
@@ -233,22 +244,22 @@ export class ComponentsPanel {
         const onPage = filtered.filter(c => (this.presenceByFile.get(c.filePath)?.count ?? 0) > 0);
         const offPage = filtered.filter(c => (this.presenceByFile.get(c.filePath)?.count ?? 0) === 0);
         const items = [
-            onPage.length ? `<div class="section-label">Na página ativa</div>${onPage.map(itemHtml).join('')}` : '',
-            offPage.length ? `<div class="section-label">Outros componentes</div>${offPage.map(itemHtml).join('')}` : '',
+            onPage.length ? `<div class="section-label">${t('componentsActivePage')}</div>${onPage.map(itemHtml).join('')}` : '',
+            offPage.length ? `<div class="section-label">${t('componentsOther')}</div>${offPage.map(itemHtml).join('')}` : '',
         ].join('');
 
         const wrapper = document.createElement('div');
         wrapper.innerHTML = `
-          <div id="comp-panel">
+            <div id="comp-panel">
             <div id="comp-header">
-              <span class="comp-title">Componentes</span>
+              <span class="comp-title">${t('componentsTitle')}</span>
               <span class="comp-count">${this.components.length}</span>
             </div>
             <div class="search-wrap">
-              <input class="search-input" id="comp-search" placeholder="Buscar componente…" value="${this.searchValue.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}" autocomplete="off" spellcheck="false" />
+              <input class="search-input" id="comp-search" placeholder="${t('componentsSearchPlaceholder')}" value="${this.searchValue.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}" autocomplete="off" spellcheck="false" />
             </div>
             <div id="comp-body">
-              ${filtered.length ? items : '<div id="empty">Nenhum componente encontrado.</div>'}
+              ${filtered.length ? items : `<div id="empty">${t('componentsEmpty')}</div>`}
             </div>
           </div>`;
 
@@ -329,7 +340,7 @@ export class ComponentsPanel {
                         body: JSON.stringify({ filePath, name }),
                     });
                     const data = await res.json() as { ok: boolean; path?: string; error?: string };
-                    if (!data.ok || !data.path) throw new Error(data.error ?? 'Preview unavailable');
+                    if (!data.ok || !data.path) throw new Error(data.error ?? t('componentsPreviewUnavailable'));
                     this.callbacks.onOpenPreview(data.path, name);
                 } catch {
                     // The editor-open button remains available as the fallback.
@@ -338,5 +349,5 @@ export class ComponentsPanel {
         });
     }
 
-    destroy(): void { this.dragCleanup?.(); this.host.remove(); }
+    destroy(): void { this.unsubscribeLanguage?.(); this.dragCleanup?.(); this.host.remove(); }
 }

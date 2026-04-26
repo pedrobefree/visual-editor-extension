@@ -5,6 +5,7 @@
    ----------------------------------------------------------------------- */
 
 import { attachDrag } from './drag-util';
+import { subscribeLanguageChange, t } from './i18n';
 
 const CSS = `
 :host { all: initial; }
@@ -84,12 +85,12 @@ const SVG_COMPONENTS = `<svg class="tb-icon" viewBox="0 0 16 16" fill="none" str
 </svg>`;
 
 const BREAKPOINTS = [
-    { label: 'Base', prefix: '', width: null, title: 'Default/mobile: applies at all viewport widths unless overridden.' },
-    { label: 'sm', prefix: 'sm:', width: 640, title: 'sm: Minimum width of 40rem (640px).' },
-    { label: 'md', prefix: 'md:', width: 768, title: 'md: Minimum width of 48rem (768px).' },
-    { label: 'lg', prefix: 'lg:', width: 1024, title: 'lg: Minimum width of 64rem (1024px).' },
-    { label: 'xl', prefix: 'xl:', width: 1280, title: 'xl: Minimum width of 80rem (1280px).' },
-    { label: '2xl', prefix: '2xl:', width: 1536, title: '2xl: Minimum width of 96rem (1536px).' },
+    { labelKey: 'breakpointBase', prefix: '', width: null, titleKey: 'breakpointBaseTitle' },
+    { labelKey: null, prefix: 'sm:', width: 640, titleKey: 'breakpointSmTitle' },
+    { labelKey: null, prefix: 'md:', width: 768, titleKey: 'breakpointMdTitle' },
+    { labelKey: null, prefix: 'lg:', width: 1024, titleKey: 'breakpointLgTitle' },
+    { labelKey: null, prefix: 'xl:', width: 1280, titleKey: 'breakpointXlTitle' },
+    { labelKey: null, prefix: '2xl:', width: 1536, titleKey: 'breakpoint2xlTitle' },
 ];
 
 export interface ToolbarCallbacks {
@@ -109,6 +110,7 @@ export class VisualEditToolbar {
     private shadow: ShadowRoot;
     private callbacks: ToolbarCallbacks;
     private dragCleanup: (() => void) | null = null;
+    private unsubscribeLanguage: (() => void) | null = null;
     private themeActive      = false;
     private treeActive       = false;
     private componentsActive = false;
@@ -123,6 +125,7 @@ export class VisualEditToolbar {
         this.host.id = VisualEditToolbar.HOST_ID;
         this.shadow = this.host.attachShadow({ mode: 'closed' });
         document.body.appendChild(this.host);
+        this.unsubscribeLanguage = subscribeLanguageChange(() => this.render());
         this.render();
     }
 
@@ -138,18 +141,18 @@ export class VisualEditToolbar {
           <div id="toolbar">
             <span class="ve-badge">VE</span>
             <div class="divider"></div>
-            <button class="tb-btn${this.themeActive      ? ' active' : ''}" id="tb-theme">${SVG_THEME} Tema</button>
-            <button class="tb-btn${this.treeActive       ? ' active' : ''}" id="tb-tree">${SVG_TREE} Árvore</button>
-            <button class="tb-btn${this.componentsActive ? ' active' : ''}" id="tb-components">${SVG_COMPONENTS} Componentes</button>
-            <button class="tb-btn${this.outlineActive    ? ' active' : ''}" id="tb-outline">${SVG_OUTLINE} Contornos</button>
+            <button class="tb-btn${this.themeActive      ? ' active' : ''}" id="tb-theme">${SVG_THEME} ${t('toolbarTheme')}</button>
+            <button class="tb-btn${this.treeActive       ? ' active' : ''}" id="tb-tree">${SVG_TREE} ${t('toolbarTree')}</button>
+            <button class="tb-btn${this.componentsActive ? ' active' : ''}" id="tb-components">${SVG_COMPONENTS} ${t('toolbarComponents')}</button>
+            <button class="tb-btn${this.outlineActive    ? ' active' : ''}" id="tb-outline">${SVG_OUTLINE} ${t('toolbarOutline')}</button>
             <div class="divider"></div>
-            <div class="bp-group" aria-label="Preview responsivo">
+            <div class="bp-group" aria-label="${t('toolbarResponsivePreview')}">
               ${BREAKPOINTS.map(bp =>
-                  `<button class="bp-btn${this.responsivePrefix === bp.prefix ? ' active' : ''}" data-prefix="${bp.prefix}" data-width="${bp.width ?? ''}" title="${bp.title}">${bp.label}</button>`
+                  `<button class="bp-btn${this.responsivePrefix === bp.prefix ? ' active' : ''}" data-prefix="${bp.prefix}" data-width="${bp.width ?? ''}" title="${t(bp.titleKey)}">${bp.labelKey ? t(bp.labelKey) : bp.prefix.replace(':', '')}</button>`
               ).join('')}
             </div>
             <div class="divider"></div>
-            <button class="tb-close" id="tb-close" title="Desativar Visual Edit">✕</button>
+            <button class="tb-close" id="tb-close" title="${t('toolbarDisable')}">✕</button>
           </div>`;
         this.shadow.innerHTML = '';
         this.shadow.appendChild(style);
@@ -171,20 +174,14 @@ export class VisualEditToolbar {
         }
 
         this.shadow.querySelector('#tb-theme')?.addEventListener('click', () => {
-            this.themeActive = !this.themeActive;
-            this.render();
             this.callbacks.onTheme();
         });
 
         this.shadow.querySelector('#tb-tree')?.addEventListener('click', () => {
-            this.treeActive = !this.treeActive;
-            this.render();
             this.callbacks.onTree();
         });
 
         this.shadow.querySelector('#tb-components')?.addEventListener('click', () => {
-            this.componentsActive = !this.componentsActive;
-            this.render();
             this.callbacks.onComponents();
         });
 
@@ -210,5 +207,5 @@ export class VisualEditToolbar {
         });
     }
 
-    destroy(): void { this.dragCleanup?.(); this.host.remove(); }
+    destroy(): void { this.unsubscribeLanguage?.(); this.dragCleanup?.(); this.host.remove(); }
 }

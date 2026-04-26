@@ -5,6 +5,7 @@
    ----------------------------------------------------------------------- */
 
 import { attachDrag } from './drag-util';
+import { subscribeLanguageChange, t } from './i18n';
 
 const BRIDGE = 'http://localhost:5179';
 
@@ -128,6 +129,9 @@ export class ThemePanel {
     /** OID of the color chip currently open for editing (chip.dataset.colorVar) */
     private openEditorVar = '';
     private dragCleanup:  (() => void) | null = null;
+    private state: 'loading' | 'error' | 'empty' | 'ready' = 'loading';
+    private stateMessage = '';
+    private unsubscribeLanguage: (() => void) | null = null;
 
     constructor() {
         document.querySelectorAll(`#${ThemePanel.HOST_ID}`).forEach(el => el.remove());
@@ -135,15 +139,21 @@ export class ThemePanel {
         this.host.id = ThemePanel.HOST_ID;
         this.shadow = this.host.attachShadow({ mode: 'closed' });
         document.body.appendChild(this.host);
+        this.unsubscribeLanguage = subscribeLanguageChange(() => {
+            if (this.state === 'ready') this.render();
+            else this.renderState(this.state as 'loading' | 'error' | 'empty', this.stateMessage);
+        });
         this.renderState('loading');
         this.loadTheme();
     }
 
     private renderState(state: 'loading' | 'error' | 'empty', msg = ''): void {
+        this.state = state;
+        this.stateMessage = msg;
         const messages: Record<string, string> = {
-            loading: 'Carregando tema do projeto…',
-            error:   msg || 'Bridge offline ou sem suporte a tema.',
-            empty:   'Nenhuma variável CSS de cor/fonte encontrada.<br>Certifique-se de que o projeto define variáveis<br>em <code>:root { }</code> no CSS.',
+            loading: t('themeLoading'),
+            error:   msg || t('themeError'),
+            empty:   t('themeEmpty'),
         };
         this.shadow.innerHTML = '';
         const style = document.createElement('style');
@@ -151,7 +161,7 @@ export class ThemePanel {
         const wrapper = document.createElement('div');
         wrapper.innerHTML = `
           <div id="theme-panel">
-            <div id="theme-header"><span class="theme-title">Tema do projeto</span></div>
+            <div id="theme-header"><span class="theme-title">${t('themeTitle')}</span></div>
             <div id="theme-body">
               <div class="state-msg state-${state}">${messages[state]}</div>
             </div>
@@ -174,6 +184,7 @@ export class ThemePanel {
                 this.renderState('empty');
                 return;
             }
+            this.state = 'ready';
             this.render();
         } catch {
             this.renderState('error');
@@ -221,7 +232,7 @@ export class ThemePanel {
         // Build fonts HTML
         const fontsHtml = fonts.length ? `
           <div>
-            <div class="sec-label">Fontes</div>
+            <div class="sec-label">${t('themeFonts')}</div>
             ${fonts.map(f => `
               <div class="font-row">
                 <span class="font-label">${f.name}</span>
@@ -236,9 +247,9 @@ export class ThemePanel {
         const wrapper = document.createElement('div');
         wrapper.innerHTML = `
           <div id="theme-panel">
-            <div id="theme-header"><span class="theme-title">Tema do projeto</span></div>
+            <div id="theme-header"><span class="theme-title">${t('themeTitle')}</span></div>
             <div id="theme-body">
-              ${colors.length ? `<div><div class="sec-label">Cores</div>${colorHtml}</div>` : ''}
+              ${colors.length ? `<div><div class="sec-label">${t('themeColors')}</div>${colorHtml}</div>` : ''}
               ${fontsHtml}
             </div>
           </div>`;
@@ -350,9 +361,9 @@ export class ThemePanel {
                         editor.classList.remove('open');
                         chip.classList.remove('open');
                         this.openEditorVar = '';
-                        this.showToast('Cor salva ✓', 'success');
+                        this.showToast(t('themeColorSaved'), 'success');
                     } else {
-                        this.showToast('Erro ao salvar — bridge offline?', 'error');
+                        this.showToast(t('themeSaveError'), 'error');
                     }
                 });
             });
@@ -371,9 +382,9 @@ export class ThemePanel {
                 });
                 if (ok) {
                     if (font) font.value = input.value.trim();
-                    this.showToast('Fonte salva ✓', 'success');
+                    this.showToast(t('themeFontSaved'), 'success');
                 } else {
-                    this.showToast('Erro ao salvar fonte', 'error');
+                    this.showToast(t('themeFontSaveError'), 'error');
                 }
             });
         });
@@ -400,5 +411,5 @@ export class ThemePanel {
         setTimeout(() => toast.remove(), 2500);
     }
 
-    destroy(): void { this.dragCleanup?.(); this.host.remove(); }
+    destroy(): void { this.unsubscribeLanguage?.(); this.dragCleanup?.(); this.host.remove(); }
 }

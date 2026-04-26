@@ -7,6 +7,7 @@
    ----------------------------------------------------------------------- */
 
 import { injectClassForPreview, injectClassesForPreview } from './tailwind-inject';
+import { subscribeLanguageChange, t } from './i18n';
 
 const BRIDGE = 'http://localhost:5179';
 
@@ -290,7 +291,7 @@ const SHADOW_VALUES: Record<string, string> = {
 
 /* ── Color swatch builder ───────────────────────────────────────────────── */
 function buildColorSwatches(prefix: 'bg' | 'text' | 'border' | 'ring'): string {
-    const label = prefix === 'bg' ? 'Background' : prefix === 'text' ? 'Texto' : prefix === 'border' ? 'Borda' : 'Ring';
+    const label = prefix === 'bg' ? t('panelBackground') : prefix === 'text' ? t('panelText') : prefix === 'border' ? t('panelBorder') : t('panelRing');
     let grid = '<div class="color-grid">';
     grid += `<div class="color-row">
       <div class="swatch swatch-white" data-class="${prefix}-white" title="${prefix}-white: #ffffff"></div>
@@ -307,7 +308,7 @@ function buildColorSwatches(prefix: 'bg' | 'text' | 'border' | 'ring'): string {
     grid += '</div>';
     return `
       <div class="color-picker" data-prefix="${prefix}">
-        <button class="color-picker-trigger" type="button" title="Escolher cor de ${label}">
+        <button class="color-picker-trigger" type="button" title="${prefix === 'ring' ? t('panelRingColor') : label}">
           <span class="swatch-preview"></span>
           <span>${label}</span>
         </button>
@@ -523,33 +524,33 @@ function chips(values: string[]): string {
 
 function buildCurrentClassChips(classes: string): string {
     const list = classes.split(/\s+/).filter(Boolean);
-    if (!list.length) return '<span style="font-size:10px;color:#444">Nenhuma classe</span>';
+    if (!list.length) return `<span style="font-size:10px;color:#444">${t('panelNoClasses')}</span>`;
     return `<div class="chips">${list.map(cls =>
         `<div class="chip active" data-class="${cls}" title="${classTooltip(cls)}">${cls}</div>`
     ).join('')}</div>`;
 }
 
 const CLASS_CATEGORIES = [
-    { name: 'Layout', keywords: ['layout', 'display', 'position', 'overflow', 'z-index'], match: (c: string) => /^(block|inline|inline-block|hidden|contents|static|fixed|absolute|relative|sticky|overflow|z-)/.test(c) },
-    { name: 'Flexbox & Grid', keywords: ['flex', 'grid', 'align', 'justify'], match: (c: string) => /^(flex|inline-flex|grid|inline-grid|basis|grow|shrink|justify-|items-|self-|content-|place-|grid-|col-|row-)/.test(c) },
-    { name: 'Spacing', keywords: ['spacing', 'padding', 'margin', 'gap'], match: (c: string) => /^(p|px|py|pt|pr|pb|pl|m|mx|my|mt|mr|mb|ml|gap|space-[xy])-/.test(c) },
-    { name: 'Sizing', keywords: ['size', 'width', 'height'], match: (c: string) => /^(w|h|min-w|max-w|min-h|max-h|size|aspect)-/.test(c) },
-    { name: 'Typography', keywords: ['type', 'font', 'text', 'leading', 'tracking'], match: (c: string) => /^(text|font|leading|tracking|uppercase|lowercase|capitalize|normal-case|underline|line-through|no-underline|whitespace|truncate)/.test(c) },
-    { name: 'Backgrounds', keywords: ['background', 'color', 'gradient'], match: (c: string) => /^(bg-|from-|via-|to-)/.test(c) },
-    { name: 'Borders', keywords: ['border', 'radius', 'ring', 'outline'], match: (c: string) => /^(border|rounded|ring|outline)-?/.test(c) },
-    { name: 'Effects', keywords: ['effect', 'shadow', 'opacity', 'blend'], match: (c: string) => /^(shadow|opacity|mix-blend|bg-blend)-?/.test(c) },
-    { name: 'Filters', keywords: ['filter', 'blur', 'brightness', 'contrast'], match: (c: string) => /^(blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|saturate|sepia|backdrop)-/.test(c) },
-    { name: 'Tables', keywords: ['table'], match: (c: string) => /^(table|border-collapse|border-separate|caption)-?/.test(c) },
-    { name: 'Transitions & Animation', keywords: ['transition', 'animation', 'duration', 'ease'], match: (c: string) => /^(transition|duration|ease|delay|animate)-?/.test(c) },
-    { name: 'Transforms', keywords: ['transform', 'scale', 'rotate', 'translate', 'skew'], match: (c: string) => /^(transform|scale|rotate|translate|skew|origin)-?/.test(c) },
-    { name: 'Interactivity', keywords: ['cursor', 'pointer', 'select', 'resize', 'scroll'], match: (c: string) => /^(cursor|pointer-events|select|resize|scroll|snap|touch|user)-?/.test(c) },
-    { name: 'SVG', keywords: ['svg', 'fill', 'stroke'], match: (c: string) => /^(fill|stroke)-/.test(c) },
-    { name: 'Accessibility', keywords: ['accessibility', 'screen reader', 'sr'], match: (c: string) => /^(sr-only|not-sr-only)$/.test(c) },
+    { key: 'Layout', keywords: ['layout', 'display', 'position', 'overflow', 'z-index'], match: (c: string) => /^(block|inline|inline-block|hidden|contents|static|fixed|absolute|relative|sticky|overflow|z-)/.test(c) },
+    { key: 'Flexbox & Grid', keywords: ['flex', 'grid', 'align', 'justify'], match: (c: string) => /^(flex|inline-flex|grid|inline-grid|basis|grow|shrink|justify-|items-|self-|content-|place-|grid-|col-|row-)/.test(c) },
+    { key: 'Spacing', keywords: ['spacing', 'padding', 'margin', 'gap'], match: (c: string) => /^(p|px|py|pt|pr|pb|pl|m|mx|my|mt|mr|mb|ml|gap|space-[xy])-/.test(c) },
+    { key: 'Sizing', keywords: ['size', 'width', 'height'], match: (c: string) => /^(w|h|min-w|max-w|min-h|max-h|size|aspect)-/.test(c) },
+    { key: 'Typography', keywords: ['type', 'font', 'text', 'leading', 'tracking'], match: (c: string) => /^(text|font|leading|tracking|uppercase|lowercase|capitalize|normal-case|underline|line-through|no-underline|whitespace|truncate)/.test(c) },
+    { key: 'Backgrounds', keywords: ['background', 'color', 'gradient'], match: (c: string) => /^(bg-|from-|via-|to-)/.test(c) },
+    { key: 'Borders', keywords: ['border', 'radius', 'ring', 'outline'], match: (c: string) => /^(border|rounded|ring|outline)-?/.test(c) },
+    { key: 'Effects', keywords: ['effect', 'shadow', 'opacity', 'blend'], match: (c: string) => /^(shadow|opacity|mix-blend|bg-blend)-?/.test(c) },
+    { key: 'Filters', keywords: ['filter', 'blur', 'brightness', 'contrast'], match: (c: string) => /^(blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|saturate|sepia|backdrop)-/.test(c) },
+    { key: 'Tables', keywords: ['table'], match: (c: string) => /^(table|border-collapse|border-separate|caption)-?/.test(c) },
+    { key: 'Transitions & Animation', keywords: ['transition', 'animation', 'duration', 'ease'], match: (c: string) => /^(transition|duration|ease|delay|animate)-?/.test(c) },
+    { key: 'Transforms', keywords: ['transform', 'scale', 'rotate', 'translate', 'skew'], match: (c: string) => /^(transform|scale|rotate|translate|skew|origin)-?/.test(c) },
+    { key: 'Interactivity', keywords: ['cursor', 'pointer', 'select', 'resize', 'scroll'], match: (c: string) => /^(cursor|pointer-events|select|resize|scroll|snap|touch|user)-?/.test(c) },
+    { key: 'SVG', keywords: ['svg', 'fill', 'stroke'], match: (c: string) => /^(fill|stroke)-/.test(c) },
+    { key: 'Accessibility', keywords: ['accessibility', 'screen reader', 'sr'], match: (c: string) => /^(sr-only|not-sr-only)$/.test(c) },
 ];
 
 function classCategory(cls: string): string {
     const base = getBaseClass(cls);
-    return CLASS_CATEGORIES.find(group => group.match(base))?.name ?? 'Other';
+    return CLASS_CATEGORIES.find(group => group.match(base))?.key ?? 'Other';
 }
 
 function categoryMatchesQuery(cls: string, q: string): boolean {
@@ -557,7 +558,7 @@ function categoryMatchesQuery(cls: string, q: string): boolean {
     const base = getBaseClass(cls);
     const group = CLASS_CATEGORIES.find(item => item.match(base));
     if (!group) return false;
-    const haystack = [group.name, ...group.keywords].join(' ').toLowerCase();
+    const haystack = [group.key, ...group.keywords].join(' ').toLowerCase();
     return haystack.includes(q);
 }
 
@@ -737,8 +738,8 @@ function buildGradientControls(currentClasses: string, open: boolean): string {
     if (!open && !hasGradientClasses(currentClasses)) {
         return `
           <div class="gradient-empty">
-            <button class="mini-btn primary" id="grad-open-btn" type="button">+ Editor de gradiente</button>
-            <div class="gradient-output">Nenhum gradiente ativo.</div>
+            <button class="mini-btn primary" id="grad-open-btn" type="button">${t('panelGradientOpen')}</button>
+            <div class="gradient-output">${t('panelNoGradient')}</div>
           </div>`;
     }
 
@@ -759,35 +760,35 @@ function buildGradientControls(currentClasses: string, open: boolean): string {
       <div class="gradient-controls">
         <div class="control-grid">
           <label class="control-field">
-            <span class="control-label">Tipo</span>
+            <span class="control-label">${t('panelGradientType')}</span>
             <select class="control-select" id="grad-type">
               ${['linear','radial','conic'].map(v => `<option value="${v}"${state.type === v ? ' selected' : ''}>${v}</option>`).join('')}
             </select>
           </label>
           <label class="control-field">
-            <span class="control-label">Interpolação</span>
+            <span class="control-label">${t('panelGradientInterpolation')}</span>
             <select class="control-select" id="grad-mode">
               ${modes.map(v => `<option value="${v}"${state.interpolation === v ? ' selected' : ''}>${v || 'default'}</option>`).join('')}
             </select>
           </label>
           <label class="control-field" data-grad-field="linear">
-            <span class="control-label">Direção</span>
+            <span class="control-label">${t('panelGradientDirection')}</span>
             <select class="control-select" id="grad-direction">
               ${directions.map(([v,label]) => `<option value="${v}"${state.direction === v ? ' selected' : ''}>${label}</option>`).join('')}
             </select>
           </label>
           <label class="control-field" data-grad-field="linear">
-            <span class="control-label">Ângulo</span>
+            <span class="control-label">${t('panelGradientAngle')}</span>
             <input class="control-input" id="grad-linear-angle" value="${state.linearAngle}" placeholder="ex: 65" inputmode="numeric" />
           </label>
           <label class="control-field" data-grad-field="radial">
-            <span class="control-label">Posição</span>
+            <span class="control-label">${t('panelGradientPosition')}</span>
             <select class="control-select" id="grad-radial-position">
               ${radialPositions.map(([v,label]) => `<option value="${v}"${state.radialPosition === v ? ' selected' : ''}>${label}</option>`).join('')}
             </select>
           </label>
           <label class="control-field" data-grad-field="conic">
-            <span class="control-label">Ângulo</span>
+            <span class="control-label">${t('panelGradientAngle')}</span>
             <input class="control-input" id="grad-conic-angle" value="${state.conicAngle}" placeholder="ex: 180" inputmode="numeric" />
           </label>
         </div>
@@ -800,8 +801,8 @@ function buildGradientControls(currentClasses: string, open: boolean): string {
           <label class="control-field"><span class="control-label">%</span><input class="control-input" id="grad-to-pos" value="${state.toPos}" inputmode="numeric" /></label>
         </div>
         <div class="mini-btn-row">
-          <button class="mini-btn danger" id="grad-clear-btn">Limpar</button>
-          <button class="mini-btn primary" id="grad-apply-btn">Aplicar gradiente</button>
+          <button class="mini-btn danger" id="grad-clear-btn">${t('panelGradientClear')}</button>
+          <button class="mini-btn primary" id="grad-apply-btn">${t('panelGradientApply')}</button>
         </div>
         <div class="gradient-output" id="grad-output">${classes}</div>
       </div>`;
@@ -839,8 +840,8 @@ function buildScopeControl(hidden: boolean): string {
     if (hidden) return '';
     return `
       <div class="scope-control">
-        <button class="scope-btn active" data-scope="instance">Aplicação</button>
-        <button class="scope-btn" data-scope="component">Componente</button>
+        <button class="scope-btn active" data-scope="instance">${t('panelScopeInstance')}</button>
+        <button class="scope-btn" data-scope="component">${t('panelScopeComponent')}</button>
       </div>`;
 }
 
@@ -894,28 +895,28 @@ function buildPanel(oid: string, tag: string, currentClasses: string, currentTex
           <span class="tag-badge">${tag}</span>
           <span class="oid-badge">${oid}</span>
         </div>
-        <button id="close-btn" title="Fechar (Esc)">✕</button>
+        <button id="close-btn" title="${t('panelClose')}">✕</button>
       </div>
       <div id="panel-body">
 
         ${(hasText || hasPlaceholder) ? `
         <div class="section" id="sec-content">
           <div class="${hdrCol}" data-section="content">
-            CONTEÚDO <span class="chevron">›</span>
+            ${t('panelContent')} <span class="chevron">›</span>
           </div>
           <div class="${col}">
             ${buildScopeControl(hideScopeControl)}
-            ${hideScopeControl ? '' : '<span class="scope-hint">Aplicação altera só este uso quando o componente expõe props. Componente altera o template global.</span>'}
+            ${hideScopeControl ? '' : `<span class="scope-hint">${t('panelScopeContentHint')}</span>`}
             ${hasText ? `
-            <div style="font-size:10px;color:#555;margin-bottom:3px;font-weight:600;letter-spacing:.05em;text-transform:uppercase">Texto</div>
+            <div style="font-size:10px;color:#555;margin-bottom:3px;font-weight:600;letter-spacing:.05em;text-transform:uppercase">${t('panelText')}</div>
             <textarea class="text-input" id="text-input" rows="2" spellcheck="false">${currentText}</textarea>
-            <span class="text-hint">Ou dê duplo-clique no elemento para editar inline.</span>
-            <button class="btn btn-primary" id="text-apply-btn" style="flex:none;padding:5px 12px;font-size:11px">✓ Salvar texto</button>
+            <span class="text-hint">${t('panelTextHint')}</span>
+            <button class="btn btn-primary" id="text-apply-btn" style="flex:none;padding:5px 12px;font-size:11px">${t('panelSaveText')}</button>
             ` : ''}
             ${hasPlaceholder ? `
-            <div style="font-size:10px;color:#555;margin-top:${hasText?'10px':'0'};margin-bottom:3px;font-weight:600;letter-spacing:.05em;text-transform:uppercase">Placeholder</div>
+            <div style="font-size:10px;color:#555;margin-top:${hasText?'10px':'0'};margin-bottom:3px;font-weight:600;letter-spacing:.05em;text-transform:uppercase">${t('panelPlaceholder')}</div>
             <input class="text-input" id="placeholder-input" type="text" value="${currentPlaceholder.replace(/"/g, '&quot;')}" spellcheck="false" style="min-height:unset;height:36px" />
-            <button class="btn btn-primary" id="placeholder-apply-btn" style="flex:none;padding:5px 12px;font-size:11px">✓ Salvar placeholder</button>
+            <button class="btn btn-primary" id="placeholder-apply-btn" style="flex:none;padding:5px 12px;font-size:11px">${t('panelSavePlaceholder')}</button>
             ` : ''}
           </div>
         </div>
@@ -923,24 +924,24 @@ function buildPanel(oid: string, tag: string, currentClasses: string, currentTex
 
         <div class="section" id="sec-i18n" style="display:none">
           <div class="${hdrCol}" data-section="i18n">
-            TRADUÇÕES <span class="chevron">›</span>
+            ${t('panelTranslations')} <span class="chevron">›</span>
           </div>
           <div class="${col}" id="i18n-content">
-            <span class="i18n-hint">Detectando...</span>
+            <span class="i18n-hint">${t('panelDetecting')}</span>
           </div>
         </div>
 
         <div class="section" id="sec-classes">
           <div class="section-header" data-section="classes">
-            CLASSES <span class="chevron">›</span>
+            ${t('panelClasses')} <span class="chevron">›</span>
           </div>
           <div class="section-content">
             ${buildScopeControl(hideScopeControl)}
-            ${hideScopeControl ? '' : '<span class="scope-hint">Aplicação tenta editar props do uso selecionado. Componente altera o template original globalmente.</span>'}
+            ${hideScopeControl ? '' : `<span class="scope-hint">${t('panelScopeClassesHint')}</span>`}
             <div id="current-chips">${buildCurrentClassChips(currentClasses)}</div>
             <div class="modifier-strip">
               <div class="modifier-row">
-                <span class="modifier-label">Break</span>
+                <span class="modifier-label">${t('panelBreak')}</span>
                 <div class="chips">
                   <div class="prefix-btn" data-prefix-type="responsive" data-prefix-val="" title="${BREAKPOINT_TOOLTIPS['']}">—</div>
                   <div class="prefix-btn" data-prefix-type="responsive" data-prefix-val="sm:" title="${BREAKPOINT_TOOLTIPS['sm:']}">sm:</div>
@@ -951,20 +952,20 @@ function buildPanel(oid: string, tag: string, currentClasses: string, currentTex
                 </div>
               </div>
               <div class="modifier-row">
-                <span class="modifier-label">Estado</span>
+                <span class="modifier-label">${t('panelState')}</span>
                 <div class="chips">
-                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="" title="Sem variante de estado">—</div>
-                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="hover:" title="Aplica a classe no hover do elemento">hover:</div>
-                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="focus:" title="Aplica a classe quando o elemento recebe foco">focus:</div>
-                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="active:" title="Aplica a classe no estado ativo/pressionado">active:</div>
-                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="dark:" title="Aplica a classe no modo escuro">dark:</div>
-                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="disabled:" title="Aplica a classe quando o elemento está desabilitado">disabled:</div>
-                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="focus-within:" title="Aplica a classe quando o elemento ou um descendente recebe foco">fw:</div>
+                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="" title="${t('panelStateNone')}">—</div>
+                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="hover:" title="${t('panelStateHover')}">hover:</div>
+                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="focus:" title="${t('panelStateFocus')}">focus:</div>
+                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="active:" title="${t('panelStateActive')}">active:</div>
+                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="dark:" title="${t('panelStateDark')}">dark:</div>
+                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="disabled:" title="${t('panelStateDisabled')}">disabled:</div>
+                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="focus-within:" title="${t('panelStateFocusWithin')}">fw:</div>
                 </div>
               </div>
             </div>
             <div class="search-wrap">
-              <input class="search-input" id="class-search" placeholder="Buscar ou adicionar classe..." autocomplete="off" spellcheck="false" />
+              <input class="search-input" id="class-search" placeholder="${t('panelClassSearchPlaceholder')}" autocomplete="off" spellcheck="false" />
               <div class="suggestions" id="suggestions" style="display:none"></div>
             </div>
             <textarea class="classes-input" id="classes-input" rows="3" spellcheck="false">${currentClasses}</textarea>
@@ -973,18 +974,18 @@ function buildPanel(oid: string, tag: string, currentClasses: string, currentTex
 
         <div class="section" id="sec-typography">
           <div class="${hdrCol}" data-section="typography">
-            TIPOGRAFIA <span class="chevron">›</span>
+            ${t('panelTypography')} <span class="chevron">›</span>
           </div>
           <div class="${col}">
-            <div class="row"><span class="row-label">Tamanho</span>${chips(textSizes)}</div>
-            <div class="row"><span class="row-label">Peso</span>${chips(fontWeights)}</div>
-            <div class="row"><span class="row-label">Cor texto</span>${buildColorSwatches('text')}</div>
+            <div class="row"><span class="row-label">${t('panelSize')}</span>${chips(textSizes)}</div>
+            <div class="row"><span class="row-label">${t('panelWeight')}</span>${chips(fontWeights)}</div>
+            <div class="row"><span class="row-label">${t('panelTextColor')}</span>${buildColorSwatches('text')}</div>
           </div>
         </div>
 
         <div class="section" id="sec-spacing">
           <div class="${hdrCol}" data-section="spacing">
-            ESPAÇAMENTO <span class="chevron">›</span>
+            ${t('panelSpacing')} <span class="chevron">›</span>
           </div>
           <div class="${col}">
             <div class="row"><span class="row-label">p</span>${chips(paddings)}</div>
@@ -1003,33 +1004,33 @@ function buildPanel(oid: string, tag: string, currentClasses: string, currentTex
 
         <div class="section" id="sec-background">
           <div class="${hdrCol}" data-section="background">
-            BACKGROUND <span class="chevron">›</span>
+            ${t('panelBackground')} <span class="chevron">›</span>
           </div>
           <div class="${col}">
             <div class="row">${buildColorSwatches('bg')}</div>
-            <div class="row"><span class="row-label">Editor</span>${buildGradientControls(currentClasses, gradientEditorOpen)}</div>
-            <div class="row"><span class="row-label">Gradiente</span>${buildGradientTemplates()}</div>
+            <div class="row"><span class="row-label">${t('panelEditor')}</span>${buildGradientControls(currentClasses, gradientEditorOpen)}</div>
+            <div class="row"><span class="row-label">${t('panelGradient')}</span>${buildGradientTemplates()}</div>
           </div>
         </div>
 
         <div class="section" id="sec-border">
           <div class="${hdrCol}" data-section="border">
-            BORDA <span class="chevron">›</span>
+            ${t('panelBorder')} <span class="chevron">›</span>
           </div>
           <div class="${col}">
-            <div class="row"><span class="row-label">Radius</span>${chips(radii)}</div>
-            <div class="row"><span class="row-label">Width</span>${chips(borderWidths)}</div>
-            <div class="row"><span class="row-label">Style</span>${chips(borderStyles)}</div>
-            <div class="row"><span class="row-label">Cor</span>${buildColorSwatches('border')}</div>
-            <div class="row"><span class="row-label">Ring</span>${chips(ringWidths)}</div>
-            <div class="row"><span class="row-label">Offset</span>${chips(ringOffsets)}</div>
-            <div class="row"><span class="row-label">Ring cor</span>${buildColorSwatches('ring')}</div>
+            <div class="row"><span class="row-label">${t('panelRadius')}</span>${chips(radii)}</div>
+            <div class="row"><span class="row-label">${t('panelWidth')}</span>${chips(borderWidths)}</div>
+            <div class="row"><span class="row-label">${t('panelStyle')}</span>${chips(borderStyles)}</div>
+            <div class="row"><span class="row-label">${t('panelColor')}</span>${buildColorSwatches('border')}</div>
+            <div class="row"><span class="row-label">${t('panelRing')}</span>${chips(ringWidths)}</div>
+            <div class="row"><span class="row-label">${t('panelOffset')}</span>${chips(ringOffsets)}</div>
+            <div class="row"><span class="row-label">${t('panelRingColor')}</span>${buildColorSwatches('ring')}</div>
           </div>
         </div>
 
         <div class="section" id="sec-shadow">
           <div class="${hdrCol}" data-section="shadow">
-            SOMBRA <span class="chevron">›</span>
+            ${t('panelShadow')} <span class="chevron">›</span>
           </div>
           <div class="${col}">
             <div class="row"><span class="row-label">Shadow</span>${chips(shadows)}</div>
@@ -1038,30 +1039,30 @@ function buildPanel(oid: string, tag: string, currentClasses: string, currentTex
 
         <div class="section" id="sec-layout">
           <div class="${hdrCol}" data-section="layout">
-            LAYOUT <span class="chevron">›</span>
+            ${t('panelLayout')} <span class="chevron">›</span>
           </div>
           <div class="${col}">
-            <div class="row"><span class="row-label">Display</span>${chips(displays)}</div>
-            <div class="row"><span class="row-label">Flex dir</span>${chips(flexDir)}</div>
-            <div class="row"><span class="row-label">Flex</span>${chips(flexOpts)}</div>
-            <div class="row"><span class="row-label">Justify</span>${chips(justify)}</div>
-            <div class="row"><span class="row-label">Align</span>${chips(items)}</div>
-            <div class="row"><span class="row-label">Self</span>${chips(self)}</div>
-            <div class="row"><span class="row-label">Largura</span>${chips(widths)}</div>
-            <div class="row"><span class="row-label">Max-w</span>${chips(maxWidths)}</div>
-            <div class="row"><span class="row-label">Altura</span>${chips(heights)}</div>
-            <div class="row"><span class="row-label">Grid cols</span>${chips(gridCols)}</div>
-            <div class="row"><span class="row-label">Col span</span>${chips(colSpans)}</div>
-            <div class="row"><span class="row-label">Position</span>${chips(positions)}</div>
-            <div class="row"><span class="row-label">Overflow</span>${chips(overflow)}</div>
-            <div class="row"><span class="row-label">Z-index</span>${chips(zIndex)}</div>
+            <div class="row"><span class="row-label">${t('panelDisplay')}</span>${chips(displays)}</div>
+            <div class="row"><span class="row-label">${t('panelFlexDir')}</span>${chips(flexDir)}</div>
+            <div class="row"><span class="row-label">${t('panelFlex')}</span>${chips(flexOpts)}</div>
+            <div class="row"><span class="row-label">${t('panelJustify')}</span>${chips(justify)}</div>
+            <div class="row"><span class="row-label">${t('panelAlign')}</span>${chips(items)}</div>
+            <div class="row"><span class="row-label">${t('panelSelf')}</span>${chips(self)}</div>
+            <div class="row"><span class="row-label">${t('panelLayoutWidth')}</span>${chips(widths)}</div>
+            <div class="row"><span class="row-label">${t('panelMaxWidth')}</span>${chips(maxWidths)}</div>
+            <div class="row"><span class="row-label">${t('panelHeight')}</span>${chips(heights)}</div>
+            <div class="row"><span class="row-label">${t('panelGridCols')}</span>${chips(gridCols)}</div>
+            <div class="row"><span class="row-label">${t('panelColSpan')}</span>${chips(colSpans)}</div>
+            <div class="row"><span class="row-label">${t('panelPosition')}</span>${chips(positions)}</div>
+            <div class="row"><span class="row-label">${t('panelOverflow')}</span>${chips(overflow)}</div>
+            <div class="row"><span class="row-label">${t('panelZIndex')}</span>${chips(zIndex)}</div>
           </div>
         </div>
 
       </div>
       <div id="panel-footer">
-        <button class="btn btn-secondary" id="undo-btn">↩ Desfazer</button>
-        <button class="btn btn-primary" id="apply-btn">✓ Aplicar classes</button>
+        <button class="btn btn-secondary" id="undo-btn">${t('panelUndo')}</button>
+        <button class="btn btn-primary" id="apply-btn">${t('panelApplyClasses')}</button>
       </div>
     </div>`;
 }
@@ -1140,6 +1141,7 @@ export class VisualEditPanel {
     private forceScope: EditScope | null = null;
     private hideScopeControl = false;
     private gradientEditorOpen = false;
+    private unsubscribeLanguage: (() => void) | null = null;
     /** Active responsive breakpoint prefix, e.g. 'lg:' or '' for none. */
     private activeResponsive = '';
     /** Active state variant prefix, e.g. 'hover:' or '' for none. */
@@ -1159,6 +1161,12 @@ export class VisualEditPanel {
         this.host.id = 've-panel-host';
         this.shadow = this.host.attachShadow({ mode: 'closed' });
         document.body.appendChild(this.host);
+        this.unsubscribeLanguage = subscribeLanguageChange(() => {
+            if (this.isVisible()) {
+                this.render();
+                if (this.i18nInfo) this.renderI18nContent();
+            }
+        });
     }
 
     show(el: HTMLElement, oid: string, options: PanelShowOptions = {}): void {
@@ -1231,7 +1239,7 @@ export class VisualEditPanel {
 
         content.innerHTML = `
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-            <span style="font-size:10px;color:#555">Chave:</span>
+            <span style="font-size:10px;color:#555">${t('panelTranslationKey')}</span>
             <span class="i18n-key">${key}</span>
           </div>
           <div class="locale-tabs" id="locale-tabs">
@@ -1240,8 +1248,8 @@ export class VisualEditPanel {
             ).join('')}
           </div>
           <textarea class="text-input" id="i18n-value" rows="2" spellcheck="false">${currentValue}</textarea>
-          <button class="btn btn-primary" id="i18n-save-btn" style="flex:none;padding:5px 12px;font-size:11px">✓ Salvar tradução</button>
-          <span class="i18n-hint">Altera o arquivo de mensagens do idioma selecionado.</span>
+          <button class="btn btn-primary" id="i18n-save-btn" style="flex:none;padding:5px 12px;font-size:11px">${t('panelSaveTranslation')}</button>
+          <span class="i18n-hint">${t('panelTranslationHint')}</span>
         `;
 
         // Tabs de idioma
@@ -1275,16 +1283,16 @@ export class VisualEditPanel {
                 const data = await res.json() as { ok: boolean };
                 if (data.ok) {
                     this.i18nInfo.translations[this.selectedLocale] = textarea.value;
-                    this.showToast(`${this.selectedLocale}: tradução salva ✓`, 'success');
+                    this.showToast(t('panelTranslationSaved', { locale: this.selectedLocale }), 'success');
                 } else {
-                    this.showToast('Erro ao salvar tradução', 'error');
+                    this.showToast(t('panelTranslationSaveError'), 'error');
                 }
             } catch {
-                this.showToast('Bridge offline?', 'error');
+                this.showToast(t('bridgeOfflineShort'), 'error');
             }
 
             btn.disabled = false;
-            btn.textContent = '✓ Salvar tradução';
+            btn.textContent = t('panelSaveTranslation');
         });
     }
 
@@ -1831,7 +1839,7 @@ export class VisualEditPanel {
                     const escaped = escapeHtml(c);
                     return `<div class="suggestion${active.has(c) ? ' active-cls' : ''}" data-class="${escaped}" title="${escapeHtml(classTooltip(c))}">
                        <span>${escaped}</span>
-                       ${active.has(c) ? '<span class="suggestion-badge">ativo</span>' : ''}
+                       ${active.has(c) ? `<span class="suggestion-badge">${t('panelActiveBadge')}</span>` : ''}
                      </div>`;
                 }).join('')}
             `).join('');
@@ -1864,7 +1872,7 @@ export class VisualEditPanel {
         const renderCategoryAccordion = () => {
             const active = new Set(this.pendingClasses.split(/\s+/).filter(Boolean));
             const groups = CLASS_CATEGORIES.map(category => ({
-                name: category.name,
+                    name: category.key,
                 items: ALL_CLASSES.filter(c => category.match(getBaseClass(c))),
             })).filter(group => group.items.length > 0);
 
@@ -1878,7 +1886,7 @@ export class VisualEditPanel {
                       const escaped = escapeHtml(c);
                       return `<div class="suggestion${active.has(c) ? ' active-cls' : ''}" data-class="${escaped}" title="${escapeHtml(classTooltip(c))}">
                         <span>${escaped}</span>
-                        ${active.has(c) ? '<span class="suggestion-badge">ativo</span>' : ''}
+                        ${active.has(c) ? `<span class="suggestion-badge">${t('panelActiveBadge')}</span>` : ''}
                       </div>`;
                   }).join('')}
                 </div>
@@ -1981,9 +1989,9 @@ export class VisualEditPanel {
             textApplyBtn.textContent = '…';
             const result = await this.callbacks.onTextApply(this.oid, textInput.value, this.originalText, this.editScope);
             textApplyBtn.disabled = false;
-            textApplyBtn.textContent = '✓ Salvar texto';
+            textApplyBtn.textContent = t('panelSaveText');
             if (result.ok) this.originalText = textInput.value;
-            this.showToast(result.ok ? 'Texto salvo ✓' : result.error ?? 'Erro ao salvar texto', result.ok ? 'success' : 'error');
+            this.showToast(result.ok ? t('panelTextSaved') : result.error ?? t('panelTextSaveError'), result.ok ? 'success' : 'error');
         });
 
         // ── Placeholder apply ─────────────────────────────────────────────
@@ -2002,8 +2010,8 @@ export class VisualEditPanel {
             const result = await this.callbacks.onAttrApply(this.oid, 'placeholder', placeholderInput.value, this.originalPlaceholder, this.editScope);
             if (result.ok) this.originalPlaceholder = placeholderInput.value;
             placeholderBtn.disabled = false;
-            placeholderBtn.textContent = '✓ Salvar placeholder';
-            this.showToast(result.ok ? 'Placeholder salvo ✓' : result.error ?? 'Erro ao salvar placeholder', result.ok ? 'success' : 'error');
+            placeholderBtn.textContent = t('panelSavePlaceholder');
+            this.showToast(result.ok ? t('panelPlaceholderSaved') : result.error ?? t('panelPlaceholderSaveError'), result.ok ? 'success' : 'error');
         });
 
         // ── Class apply ───────────────────────────────────────────────────
@@ -2013,12 +2021,12 @@ export class VisualEditPanel {
             applyBtn.textContent = '…';
             const result = await this.callbacks.onApply(this.oid, this.pendingClasses, this.editScope);
             applyBtn.disabled = false;
-            applyBtn.textContent = '✓ Aplicar classes';
+            applyBtn.textContent = t('panelApplyClasses');
             if (result.ok) {
                 this.originalClasses = this.pendingClasses;
-                this.showToast('Classes salvas ✓', 'success');
+                this.showToast(t('panelClassesSaved'), 'success');
             } else {
-                this.showToast(result.error ?? 'Erro ao salvar classes', 'error');
+                this.showToast(result.error ?? t('panelClassesSaveError'), 'error');
             }
         });
 
@@ -2026,20 +2034,20 @@ export class VisualEditPanel {
         const undoBtn = this.shadow.querySelector('#undo-btn') as HTMLButtonElement;
         undoBtn?.addEventListener('click', async () => {
             const prev = this.history.pop();
-            if (!prev) { this.showToast('Nada para desfazer', 'error'); return; }
+            if (!prev) { this.showToast(t('panelNothingToUndo'), 'error'); return; }
             const shouldPersistUndo = this.originalClasses === this.pendingClasses;
             this.pendingClasses = prev;
             if (this.element) this.element.className = prev;
             this.syncActiveChips(prev);
 
             if (!shouldPersistUndo) {
-                this.showToast('Preview desfeito ✓', 'success');
+                this.showToast(t('panelPreviewUndone'), 'success');
                 return;
             }
 
             const result = await this.callbacks.onApply(this.oid, prev, this.editScope);
             if (result.ok) this.originalClasses = prev;
-            this.showToast(result.ok ? 'Desfeito ✓' : result.error ?? 'Erro ao desfazer', result.ok ? 'success' : 'error');
+            this.showToast(result.ok ? t('panelUndone') : result.error ?? t('panelUndoError'), result.ok ? 'success' : 'error');
         });
     }
 
@@ -2052,5 +2060,5 @@ export class VisualEditPanel {
         setTimeout(() => toast.remove(), 2500);
     }
 
-    destroy(): void { this.host.remove(); }
+    destroy(): void { this.unsubscribeLanguage?.(); this.host.remove(); }
 }

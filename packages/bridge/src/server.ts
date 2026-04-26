@@ -1,3 +1,5 @@
+import { serve } from '@hono/node-server';
+import { spawn } from 'child_process';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { buildIndex, refreshFile, type OidIndex } from './scanner';
@@ -186,11 +188,10 @@ export function startServer(projectRoot: string): void {
         if (!body.filePath) return c.json({ ok: false, error: 'filePath required' }, 400);
         const target = body.line ? `${body.filePath}:${body.line}` : body.filePath;
         try {
-            Bun.spawn(['code', '--goto', target], { stderr: 'ignore', stdout: 'ignore' });
+            spawn('code', ['--goto', target], { stdio: 'ignore', detached: true }).unref();
             return c.json({ ok: true });
         } catch {
-            // Fallback: try 'open' on macOS
-            try { Bun.spawn(['open', body.filePath]); return c.json({ ok: true }); } catch { /**/ }
+            try { spawn('open', [body.filePath], { stdio: 'ignore', detached: true }).unref(); return c.json({ ok: true }); } catch { /**/ }
             return c.json({ ok: false, error: 'Could not open file — is VS Code in PATH?' });
         }
     });
@@ -222,7 +223,7 @@ export function startServer(projectRoot: string): void {
         return c.json({ ok });
     });
 
-    Bun.serve({ fetch: app.fetch, port: PORT });
+    serve({ fetch: app.fetch, port: PORT });
 
     console.log(`[visual-edit] Bridge rodando em http://localhost:${PORT}`);
     console.log(`[visual-edit] Abra a extensão Chrome e navegue para o seu app.`);

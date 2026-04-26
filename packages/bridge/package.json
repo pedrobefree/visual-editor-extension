@@ -2,12 +2,21 @@
   "name": "@visual-edit/bridge",
   "version": "0.0.1",
   "type": "module",
-  "bin": { "visual-edit-bridge": "./src/index.ts" },
+  "bin": {
+    "visual-edit-bridge": "./dist/index.js"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts"
+  },
   "scripts": {
-    "start": "bun run src/index.ts",
+    "build": "bun build --target node --outfile dist/index.js src/index.ts",
+    "start": "node dist/index.js",
+    "dev": "bun run src/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@hono/node-server": "^2.0.0",
     "@visual-edit/parser": "workspace:*",
     "chokidar": "^4.0.3",
     "hono": "^4.7.7"

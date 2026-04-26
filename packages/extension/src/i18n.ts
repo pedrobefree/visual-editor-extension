@@ -1,0 +1,363 @@
+export const LANG_KEY = 'popupLanguage';
+
+export type Language = 'pt-BR' | 'en-US';
+
+type Params = Record<string, string | number>;
+type Listener = (language: Language) => void;
+
+const listeners = new Set<Listener>();
+let currentLanguage: Language = 'pt-BR';
+
+const MESSAGES: Record<Language, Record<string, string>> = {
+    'pt-BR': {
+        popupTitle: 'Visual Edit',
+        enableEditing: 'Ativar edicao',
+        bridgeChecking: 'Verificando bridge...',
+        bridgeOnline: '● Bridge conectado',
+        bridgeOffline: '● Bridge offline — rode: bun run bridge',
+        tipHover: 'destaca elemento',
+        tipClick: 'abre painel de estilos',
+        tipDblClick: 'edita texto inline',
+        tipEsc: 'deseleciona',
+
+        toolbarTheme: 'Tema',
+        toolbarTree: 'Arvore',
+        toolbarComponents: 'Componentes',
+        toolbarOutline: 'Contornos',
+        toolbarResponsivePreview: 'Preview responsivo',
+        toolbarDisable: 'Desativar Visual Edit',
+        breakpointBase: 'Base',
+        breakpointBaseTitle: 'Padrao/mobile: aplica em todas as larguras de viewport, salvo override.',
+        breakpointSmTitle: 'sm: largura minima de 40rem (640px).',
+        breakpointMdTitle: 'md: largura minima de 48rem (768px).',
+        breakpointLgTitle: 'lg: largura minima de 64rem (1024px).',
+        breakpointXlTitle: 'xl: largura minima de 80rem (1280px).',
+        breakpoint2xlTitle: '2xl: largura minima de 96rem (1536px).',
+
+        componentsTitle: 'Componentes',
+        componentsLoading: 'Carregando componentes...',
+        componentsError: 'Bridge offline.',
+        componentsBridgeOffline: 'Bridge offline — inicie o bridge com `visual-edit-bridge`.',
+        componentsActivePage: 'Na pagina ativa',
+        componentsOther: 'Outros componentes',
+        componentsSearchPlaceholder: 'Buscar componente...',
+        componentsEmpty: 'Nenhum componente encontrado.',
+        componentsOnPageCount: '{count} na pagina',
+        componentsEdit: 'Editar',
+        componentsEditTitle: 'Editar instancias nesta pagina',
+        componentsBrowser: 'Browser',
+        componentsPreviewTitle: 'Abrir preview no browser',
+        componentsOpenEditorTitle: 'Abrir no editor',
+        componentsPreviewUnavailable: 'Preview indisponivel',
+
+        layerTitle: 'Arvore de elementos',
+        layerRefresh: 'Atualizar arvore',
+        layerEmpty: 'Nenhum elemento com data-oid encontrado. Certifique-se de que o plugin OID esta ativo.',
+
+        themeTitle: 'Tema do projeto',
+        themeLoading: 'Carregando tema do projeto...',
+        themeError: 'Bridge offline ou sem suporte a tema.',
+        themeEmpty: 'Nenhuma variavel CSS de cor/fonte encontrada. Certifique-se de que o projeto define variaveis em :root { } no CSS.',
+        themeColors: 'Cores',
+        themeFonts: 'Fontes',
+        themeColorSaved: 'Cor salva ✓',
+        themeSaveError: 'Erro ao salvar — bridge offline?',
+        themeFontSaved: 'Fonte salva ✓',
+        themeFontSaveError: 'Erro ao salvar fonte',
+
+        panelContent: 'CONTEUDO',
+        panelTranslations: 'TRADUCOES',
+        panelClasses: 'CLASSES',
+        panelTypography: 'TIPOGRAFIA',
+        panelSpacing: 'ESPACAMENTO',
+        panelBackground: 'BACKGROUND',
+        panelBorder: 'BORDA',
+        panelShadow: 'SOMBRA',
+        panelLayout: 'LAYOUT',
+        panelClose: 'Fechar (Esc)',
+        panelText: 'Texto',
+        panelPlaceholder: 'Placeholder',
+        panelSaveText: '✓ Salvar texto',
+        panelSavePlaceholder: '✓ Salvar placeholder',
+        panelTextHint: 'Ou de duplo-clique no elemento para editar inline.',
+        panelScopeInstance: 'Aplicacao',
+        panelScopeComponent: 'Componente',
+        panelScopeContentHint: 'Aplicacao altera so este uso quando o componente expoe props. Componente altera o template global.',
+        panelScopeClassesHint: 'Aplicacao tenta editar props do uso selecionado. Componente altera o template original globalmente.',
+        panelDetecting: 'Detectando...',
+        panelTranslationKey: 'Chave:',
+        panelSaveTranslation: '✓ Salvar traducao',
+        panelTranslationHint: 'Altera o arquivo de mensagens do idioma selecionado.',
+        panelBreak: 'Break',
+        panelState: 'Estado',
+        panelStateNone: 'Sem variante de estado',
+        panelStateHover: 'Aplica a classe no hover do elemento',
+        panelStateFocus: 'Aplica a classe quando o elemento recebe foco',
+        panelStateActive: 'Aplica a classe no estado ativo/pressionado',
+        panelStateDark: 'Aplica a classe no modo escuro',
+        panelStateDisabled: 'Aplica a classe quando o elemento esta desabilitado',
+        panelStateFocusWithin: 'Aplica a classe quando o elemento ou um descendente recebe foco',
+        panelClassSearchPlaceholder: 'Buscar ou adicionar classe...',
+        panelSize: 'Tamanho',
+        panelWeight: 'Peso',
+        panelTextColor: 'Cor texto',
+        panelEditor: 'Editor',
+        panelGradient: 'Gradiente',
+        panelRadius: 'Radius',
+        panelWidth: 'Width',
+        panelStyle: 'Style',
+        panelColor: 'Cor',
+        panelRing: 'Ring',
+        panelOffset: 'Offset',
+        panelRingColor: 'Ring cor',
+        panelDisplay: 'Display',
+        panelFlexDir: 'Flex dir',
+        panelFlex: 'Flex',
+        panelJustify: 'Justify',
+        panelAlign: 'Align',
+        panelSelf: 'Self',
+        panelLayoutWidth: 'Largura',
+        panelMaxWidth: 'Max-w',
+        panelHeight: 'Altura',
+        panelGridCols: 'Grid cols',
+        panelColSpan: 'Col span',
+        panelPosition: 'Position',
+        panelOverflow: 'Overflow',
+        panelZIndex: 'Z-index',
+        panelUndo: '↩ Desfazer',
+        panelApplyClasses: '✓ Aplicar classes',
+        panelNoClasses: 'Nenhuma classe',
+        panelActiveBadge: 'ativo',
+        panelGradientOpen: '+ Editor de gradiente',
+        panelNoGradient: 'Nenhum gradiente ativo.',
+        panelGradientType: 'Tipo',
+        panelGradientInterpolation: 'Interpolacao',
+        panelGradientDirection: 'Direcao',
+        panelGradientAngle: 'Angulo',
+        panelGradientPosition: 'Posicao',
+        panelGradientClear: 'Limpar',
+        panelGradientApply: 'Aplicar gradiente',
+        panelTextSaved: 'Texto salvo ✓',
+        panelTextSaveError: 'Erro ao salvar texto',
+        panelPlaceholderSaved: 'Placeholder salvo ✓',
+        panelPlaceholderSaveError: 'Erro ao salvar placeholder',
+        panelClassesSaved: 'Classes salvas ✓',
+        panelClassesSaveError: 'Erro ao salvar classes',
+        panelNothingToUndo: 'Nada para desfazer',
+        panelPreviewUndone: 'Preview desfeito ✓',
+        panelUndone: 'Desfeito ✓',
+        panelUndoError: 'Erro ao desfazer',
+        panelTranslationSaved: '{locale}: traducao salva ✓',
+        panelTranslationSaveError: 'Erro ao salvar traducao',
+        bridgeOfflineShort: 'Bridge offline?',
+        reusedComponentWarning: 'Componente reutilizado — {count} instancias compartilham este template. Editar afetara todas.',
+        noInstancesOnPage: 'Nenhuma instancia desse componente nesta pagina',
+        instancesOnPage: '{name}: {count} instancia(s) na pagina',
+        previewOpenedBrowser: '{name}: preview aberto no browser',
+        visualEditEnabled: 'Visual Edit ativado',
+        visualEditDisabled: 'Visual Edit desativado',
+    },
+    'en-US': {
+        popupTitle: 'Visual Edit',
+        enableEditing: 'Enable editing',
+        bridgeChecking: 'Checking bridge...',
+        bridgeOnline: '● Bridge connected',
+        bridgeOffline: '● Bridge offline — run: bun run bridge',
+        tipHover: 'highlight element',
+        tipClick: 'open style panel',
+        tipDblClick: 'edit text inline',
+        tipEsc: 'deselect',
+
+        toolbarTheme: 'Theme',
+        toolbarTree: 'Tree',
+        toolbarComponents: 'Components',
+        toolbarOutline: 'Outlines',
+        toolbarResponsivePreview: 'Responsive preview',
+        toolbarDisable: 'Disable Visual Edit',
+        breakpointBase: 'Base',
+        breakpointBaseTitle: 'Default/mobile: applies at all viewport widths unless overridden.',
+        breakpointSmTitle: 'sm: minimum width of 40rem (640px).',
+        breakpointMdTitle: 'md: minimum width of 48rem (768px).',
+        breakpointLgTitle: 'lg: minimum width of 64rem (1024px).',
+        breakpointXlTitle: 'xl: minimum width of 80rem (1280px).',
+        breakpoint2xlTitle: '2xl: minimum width of 96rem (1536px).',
+
+        componentsTitle: 'Components',
+        componentsLoading: 'Loading components...',
+        componentsError: 'Bridge offline.',
+        componentsBridgeOffline: 'Bridge offline — start the bridge with `visual-edit-bridge`.',
+        componentsActivePage: 'On active page',
+        componentsOther: 'Other components',
+        componentsSearchPlaceholder: 'Search component...',
+        componentsEmpty: 'No components found.',
+        componentsOnPageCount: '{count} on page',
+        componentsEdit: 'Edit',
+        componentsEditTitle: 'Edit instances on this page',
+        componentsBrowser: 'Browser',
+        componentsPreviewTitle: 'Open preview in browser',
+        componentsOpenEditorTitle: 'Open in editor',
+        componentsPreviewUnavailable: 'Preview unavailable',
+
+        layerTitle: 'Element tree',
+        layerRefresh: 'Refresh tree',
+        layerEmpty: 'No element with data-oid found. Make sure the OID plugin is active.',
+
+        themeTitle: 'Project theme',
+        themeLoading: 'Loading project theme...',
+        themeError: 'Bridge offline or theme unsupported.',
+        themeEmpty: 'No CSS color/font variables found. Make sure the project defines variables in :root { } in CSS.',
+        themeColors: 'Colors',
+        themeFonts: 'Fonts',
+        themeColorSaved: 'Color saved ✓',
+        themeSaveError: 'Save failed — bridge offline?',
+        themeFontSaved: 'Font saved ✓',
+        themeFontSaveError: 'Error saving font',
+
+        panelContent: 'CONTENT',
+        panelTranslations: 'TRANSLATIONS',
+        panelClasses: 'CLASSES',
+        panelTypography: 'TYPOGRAPHY',
+        panelSpacing: 'SPACING',
+        panelBackground: 'BACKGROUND',
+        panelBorder: 'BORDER',
+        panelShadow: 'SHADOW',
+        panelLayout: 'LAYOUT',
+        panelClose: 'Close (Esc)',
+        panelText: 'Text',
+        panelPlaceholder: 'Placeholder',
+        panelSaveText: '✓ Save text',
+        panelSavePlaceholder: '✓ Save placeholder',
+        panelTextHint: 'Or double-click the element to edit inline.',
+        panelScopeInstance: 'Instance',
+        panelScopeComponent: 'Component',
+        panelScopeContentHint: 'Instance changes only this usage when the component exposes props. Component changes the global template.',
+        panelScopeClassesHint: 'Instance tries to edit props on the selected usage. Component changes the original template globally.',
+        panelDetecting: 'Detecting...',
+        panelTranslationKey: 'Key:',
+        panelSaveTranslation: '✓ Save translation',
+        panelTranslationHint: 'Updates the message file for the selected locale.',
+        panelBreak: 'Break',
+        panelState: 'State',
+        panelStateNone: 'No state variant',
+        panelStateHover: 'Apply the class on element hover',
+        panelStateFocus: 'Apply the class when the element receives focus',
+        panelStateActive: 'Apply the class in the active/pressed state',
+        panelStateDark: 'Apply the class in dark mode',
+        panelStateDisabled: 'Apply the class when the element is disabled',
+        panelStateFocusWithin: 'Apply the class when the element or a descendant receives focus',
+        panelClassSearchPlaceholder: 'Search or add class...',
+        panelSize: 'Size',
+        panelWeight: 'Weight',
+        panelTextColor: 'Text color',
+        panelEditor: 'Editor',
+        panelGradient: 'Gradient',
+        panelRadius: 'Radius',
+        panelWidth: 'Width',
+        panelStyle: 'Style',
+        panelColor: 'Color',
+        panelRing: 'Ring',
+        panelOffset: 'Offset',
+        panelRingColor: 'Ring color',
+        panelDisplay: 'Display',
+        panelFlexDir: 'Flex dir',
+        panelFlex: 'Flex',
+        panelJustify: 'Justify',
+        panelAlign: 'Align',
+        panelSelf: 'Self',
+        panelLayoutWidth: 'Width',
+        panelMaxWidth: 'Max-w',
+        panelHeight: 'Height',
+        panelGridCols: 'Grid cols',
+        panelColSpan: 'Col span',
+        panelPosition: 'Position',
+        panelOverflow: 'Overflow',
+        panelZIndex: 'Z-index',
+        panelUndo: '↩ Undo',
+        panelApplyClasses: '✓ Apply classes',
+        panelNoClasses: 'No classes',
+        panelActiveBadge: 'active',
+        panelGradientOpen: '+ Gradient editor',
+        panelNoGradient: 'No active gradient.',
+        panelGradientType: 'Type',
+        panelGradientInterpolation: 'Interpolation',
+        panelGradientDirection: 'Direction',
+        panelGradientAngle: 'Angle',
+        panelGradientPosition: 'Position',
+        panelGradientClear: 'Clear',
+        panelGradientApply: 'Apply gradient',
+        panelTextSaved: 'Text saved ✓',
+        panelTextSaveError: 'Error saving text',
+        panelPlaceholderSaved: 'Placeholder saved ✓',
+        panelPlaceholderSaveError: 'Error saving placeholder',
+        panelClassesSaved: 'Classes saved ✓',
+        panelClassesSaveError: 'Error saving classes',
+        panelNothingToUndo: 'Nothing to undo',
+        panelPreviewUndone: 'Preview undone ✓',
+        panelUndone: 'Undone ✓',
+        panelUndoError: 'Error undoing',
+        panelTranslationSaved: '{locale}: translation saved ✓',
+        panelTranslationSaveError: 'Error saving translation',
+        bridgeOfflineShort: 'Bridge offline?',
+        reusedComponentWarning: 'Reusable component — {count} instances share this template. Editing will affect all of them.',
+        noInstancesOnPage: 'No instances of this component on this page',
+        instancesOnPage: '{name}: {count} instance(s) on page',
+        previewOpenedBrowser: '{name}: preview opened in browser',
+        visualEditEnabled: 'Visual Edit enabled',
+        visualEditDisabled: 'Visual Edit disabled',
+    },
+};
+
+let listenerBound = false;
+
+function applyParams(template: string, params?: Params): string {
+    if (!params) return template;
+    return template.replace(/\{(\w+)\}/g, (_, key: string) => String(params[key] ?? `{${key}}`));
+}
+
+function notify(): void {
+    listeners.forEach(listener => listener(currentLanguage));
+}
+
+function bindStorageListener(): void {
+    if (listenerBound || typeof chrome === 'undefined' || !chrome.storage?.onChanged) return;
+    listenerBound = true;
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+        if (areaName !== 'local' || !changes[LANG_KEY]) return;
+        const next = changes[LANG_KEY].newValue === 'en-US' ? 'en-US' : 'pt-BR';
+        if (next === currentLanguage) return;
+        currentLanguage = next;
+        notify();
+    });
+}
+
+export function getLanguage(): Language {
+    return currentLanguage;
+}
+
+export async function loadLanguage(): Promise<Language> {
+    bindStorageListener();
+    if (typeof chrome === 'undefined' || !chrome.storage?.local) return currentLanguage;
+    const stored = await chrome.storage.local.get(LANG_KEY);
+    currentLanguage = stored[LANG_KEY] === 'en-US' ? 'en-US' : 'pt-BR';
+    return currentLanguage;
+}
+
+export async function setLanguage(language: Language): Promise<void> {
+    currentLanguage = language;
+    bindStorageListener();
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        await chrome.storage.local.set({ [LANG_KEY]: language });
+    }
+    notify();
+}
+
+export function t(key: string, params?: Params): string {
+    const template = MESSAGES[currentLanguage][key] ?? MESSAGES['pt-BR'][key] ?? key;
+    return applyParams(template, params);
+}
+
+export function subscribeLanguageChange(listener: Listener): () => void {
+    bindStorageListener();
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+}
