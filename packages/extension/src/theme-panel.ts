@@ -19,6 +19,7 @@ export interface ThemeColor {
 export interface ThemeFont {
     name: string;
     value: string;
+    displayValue?: string;
     variable?: string;
     filePath?: string;
 }
@@ -224,7 +225,7 @@ export class ThemePanel {
             ${fonts.map(f => `
               <div class="font-row">
                 <span class="font-label">${f.name}</span>
-                <input class="font-input" data-font-name="${f.name}" value="${f.value}" spellcheck="false" />
+                <input class="font-input" data-font-name="${f.name}" value="${f.displayValue ?? f.value}" title="${f.value.replace(/"/g, '&quot;')}" spellcheck="false" />
                 <button class="btn-font-save" data-font-name="${f.name}">✓</button>
               </div>`).join('')}
           </div>` : '';

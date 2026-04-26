@@ -17,41 +17,52 @@ export interface I18nInfo {
     files: Record<string, string>;
 }
 
+type EditScope = 'instance' | 'component';
+export type EditResponse = { ok: boolean; error?: string };
+
+export interface PanelShowOptions {
+    forceScope?: EditScope;
+    hideScopeControl?: boolean;
+}
+
 export interface PanelCallbacks {
-    onApply: (oid: string, classes: string) => Promise<boolean>;
+    onApply: (oid: string, classes: string, scope: EditScope) => Promise<EditResponse>;
     /** newText = what the user typed; originalText = DOM text when panel opened */
-    onTextApply: (oid: string, newText: string, originalText: string) => Promise<boolean>;
+    onTextApply: (oid: string, newText: string, originalText: string, scope: EditScope) => Promise<EditResponse>;
     /** Update a specific JSX attribute (e.g. placeholder) on the element */
-    onAttrApply: (oid: string, attrName: string, newValue: string, currentValue: string) => Promise<boolean>;
+    onAttrApply: (oid: string, attrName: string, newValue: string, currentValue: string, scope: EditScope) => Promise<EditResponse>;
     onClose: () => void;
 }
 
 /* ── Tailwind palette ───────────────────────────────────────────────────── */
 const TAILWIND_COLORS = [
-    'slate','gray','zinc','red','orange','amber','yellow','lime',
-    'green','teal','cyan','sky','blue','indigo','violet','purple','fuchsia','pink','rose',
+    'slate','gray','zinc','neutral','stone','red','orange','amber','yellow','lime',
+    'green','emerald','teal','cyan','sky','blue','indigo','violet','purple','fuchsia','pink','rose',
 ];
-const COLOR_SHADES = [100,200,300,400,500,600,700,800,900];
+const COLOR_SHADES = [50,100,200,300,400,500,600,700,800,900,950];
 const COLOR_HEX: Record<string,Record<number,string>> = {
-    slate:{100:'#f1f5f9',200:'#e2e8f0',300:'#cbd5e1',400:'#94a3b8',500:'#64748b',600:'#475569',700:'#334155',800:'#1e293b',900:'#0f172a'},
-    gray:{100:'#f3f4f6',200:'#e5e7eb',300:'#d1d5db',400:'#9ca3af',500:'#6b7280',600:'#4b5563',700:'#374151',800:'#1f2937',900:'#111827'},
-    zinc:{100:'#f4f4f5',200:'#e4e4e7',300:'#d4d4d8',400:'#a1a1aa',500:'#71717a',600:'#52525b',700:'#3f3f46',800:'#27272a',900:'#18181b'},
-    red:{100:'#fee2e2',200:'#fecaca',300:'#fca5a5',400:'#f87171',500:'#ef4444',600:'#dc2626',700:'#b91c1c',800:'#991b1b',900:'#7f1d1d'},
-    orange:{100:'#ffedd5',200:'#fed7aa',300:'#fdba74',400:'#fb923c',500:'#f97316',600:'#ea580c',700:'#c2410c',800:'#9a3412',900:'#7c2d12'},
-    amber:{100:'#fef3c7',200:'#fde68a',300:'#fcd34d',400:'#fbbf24',500:'#f59e0b',600:'#d97706',700:'#b45309',800:'#92400e',900:'#78350f'},
-    yellow:{100:'#fef9c3',200:'#fef08a',300:'#fde047',400:'#facc15',500:'#eab308',600:'#ca8a04',700:'#a16207',800:'#854d0e',900:'#713f12'},
-    lime:{100:'#ecfccb',200:'#d9f99d',300:'#bef264',400:'#a3e635',500:'#84cc16',600:'#65a30d',700:'#4d7c0f',800:'#3f6212',900:'#365314'},
-    green:{100:'#dcfce7',200:'#bbf7d0',300:'#86efac',400:'#4ade80',500:'#22c55e',600:'#16a34a',700:'#15803d',800:'#166534',900:'#14532d'},
-    teal:{100:'#ccfbf1',200:'#99f6e4',300:'#5eead4',400:'#2dd4bf',500:'#14b8a6',600:'#0d9488',700:'#0f766e',800:'#115e59',900:'#134e4a'},
-    cyan:{100:'#cffafe',200:'#a5f3fc',300:'#67e8f9',400:'#22d3ee',500:'#06b6d4',600:'#0891b2',700:'#0e7490',800:'#155e75',900:'#164e63'},
-    sky:{100:'#e0f2fe',200:'#bae6fd',300:'#7dd3fc',400:'#38bdf8',500:'#0ea5e9',600:'#0284c7',700:'#0369a1',800:'#075985',900:'#0c4a6e'},
-    blue:{100:'#dbeafe',200:'#bfdbfe',300:'#93c5fd',400:'#60a5fa',500:'#3b82f6',600:'#2563eb',700:'#1d4ed8',800:'#1e40af',900:'#1e3a8f'},
-    indigo:{100:'#e0e7ff',200:'#c7d2fe',300:'#a5b4fc',400:'#818cf8',500:'#6366f1',600:'#4f46e5',700:'#4338ca',800:'#3730a3',900:'#312e81'},
-    violet:{100:'#ede9fe',200:'#ddd6fe',300:'#c4b5fd',400:'#a78bfa',500:'#8b5cf6',600:'#7c3aed',700:'#6d28d9',800:'#5b21b6',900:'#4c1d95'},
-    purple:{100:'#f3e8ff',200:'#e9d5ff',300:'#d8b4fe',400:'#c084fc',500:'#a855f7',600:'#9333ea',700:'#7e22ce',800:'#6b21a8',900:'#581c87'},
-    fuchsia:{100:'#fae8ff',200:'#f5d0fe',300:'#f0abfc',400:'#e879f9',500:'#d946ef',600:'#c026d3',700:'#a21caf',800:'#86198f',900:'#701a75'},
-    pink:{100:'#fce7f3',200:'#fbcfe8',300:'#f9a8d4',400:'#f472b6',500:'#ec4899',600:'#db2777',700:'#be185d',800:'#9d174d',900:'#831843'},
-    rose:{100:'#ffe4e6',200:'#fecdd3',300:'#fda4af',400:'#fb7185',500:'#f43f5e',600:'#e11d48',700:'#be123c',800:'#9f1239',900:'#881337'},
+    slate:{50:'#f8fafc',100:'#f1f5f9',200:'#e2e8f0',300:'#cbd5e1',400:'#94a3b8',500:'#64748b',600:'#475569',700:'#334155',800:'#1e293b',900:'#0f172a',950:'#020617'},
+    gray:{50:'#f9fafb',100:'#f3f4f6',200:'#e5e7eb',300:'#d1d5db',400:'#9ca3af',500:'#6b7280',600:'#4b5563',700:'#374151',800:'#1f2937',900:'#111827',950:'#030712'},
+    zinc:{50:'#fafafa',100:'#f4f4f5',200:'#e4e4e7',300:'#d4d4d8',400:'#a1a1aa',500:'#71717a',600:'#52525b',700:'#3f3f46',800:'#27272a',900:'#18181b',950:'#09090b'},
+    neutral:{50:'#fafafa',100:'#f5f5f5',200:'#e5e5e5',300:'#d4d4d4',400:'#a3a3a3',500:'#737373',600:'#525252',700:'#404040',800:'#262626',900:'#171717',950:'#0a0a0a'},
+    stone:{50:'#fafaf9',100:'#f5f5f4',200:'#e7e5e4',300:'#d6d3d1',400:'#a8a29e',500:'#78716c',600:'#57534e',700:'#44403c',800:'#292524',900:'#1c1917',950:'#0c0a09'},
+    red:{50:'#fef2f2',100:'#fee2e2',200:'#fecaca',300:'#fca5a5',400:'#f87171',500:'#ef4444',600:'#dc2626',700:'#b91c1c',800:'#991b1b',900:'#7f1d1d',950:'#450a0a'},
+    orange:{50:'#fff7ed',100:'#ffedd5',200:'#fed7aa',300:'#fdba74',400:'#fb923c',500:'#f97316',600:'#ea580c',700:'#c2410c',800:'#9a3412',900:'#7c2d12',950:'#431407'},
+    amber:{50:'#fffbeb',100:'#fef3c7',200:'#fde68a',300:'#fcd34d',400:'#fbbf24',500:'#f59e0b',600:'#d97706',700:'#b45309',800:'#92400e',900:'#78350f',950:'#451a03'},
+    yellow:{50:'#fefce8',100:'#fef9c3',200:'#fef08a',300:'#fde047',400:'#facc15',500:'#eab308',600:'#ca8a04',700:'#a16207',800:'#854d0e',900:'#713f12',950:'#422006'},
+    lime:{50:'#f7fee7',100:'#ecfccb',200:'#d9f99d',300:'#bef264',400:'#a3e635',500:'#84cc16',600:'#65a30d',700:'#4d7c0f',800:'#3f6212',900:'#365314',950:'#1a2e05'},
+    green:{50:'#f0fdf4',100:'#dcfce7',200:'#bbf7d0',300:'#86efac',400:'#4ade80',500:'#22c55e',600:'#16a34a',700:'#15803d',800:'#166534',900:'#14532d',950:'#052e16'},
+    emerald:{50:'#ecfdf5',100:'#d1fae5',200:'#a7f3d0',300:'#6ee7b7',400:'#34d399',500:'#10b981',600:'#059669',700:'#047857',800:'#065f46',900:'#064e3b',950:'#022c22'},
+    teal:{50:'#f0fdfa',100:'#ccfbf1',200:'#99f6e4',300:'#5eead4',400:'#2dd4bf',500:'#14b8a6',600:'#0d9488',700:'#0f766e',800:'#115e59',900:'#134e4a',950:'#042f2e'},
+    cyan:{50:'#ecfeff',100:'#cffafe',200:'#a5f3fc',300:'#67e8f9',400:'#22d3ee',500:'#06b6d4',600:'#0891b2',700:'#0e7490',800:'#155e75',900:'#164e63',950:'#083344'},
+    sky:{50:'#f0f9ff',100:'#e0f2fe',200:'#bae6fd',300:'#7dd3fc',400:'#38bdf8',500:'#0ea5e9',600:'#0284c7',700:'#0369a1',800:'#075985',900:'#0c4a6e',950:'#082f49'},
+    blue:{50:'#eff6ff',100:'#dbeafe',200:'#bfdbfe',300:'#93c5fd',400:'#60a5fa',500:'#3b82f6',600:'#2563eb',700:'#1d4ed8',800:'#1e40af',900:'#1e3a8f',950:'#172554'},
+    indigo:{50:'#eef2ff',100:'#e0e7ff',200:'#c7d2fe',300:'#a5b4fc',400:'#818cf8',500:'#6366f1',600:'#4f46e5',700:'#4338ca',800:'#3730a3',900:'#312e81',950:'#1e1b4b'},
+    violet:{50:'#f5f3ff',100:'#ede9fe',200:'#ddd6fe',300:'#c4b5fd',400:'#a78bfa',500:'#8b5cf6',600:'#7c3aed',700:'#6d28d9',800:'#5b21b6',900:'#4c1d95',950:'#2e1065'},
+    purple:{50:'#faf5ff',100:'#f3e8ff',200:'#e9d5ff',300:'#d8b4fe',400:'#c084fc',500:'#a855f7',600:'#9333ea',700:'#7e22ce',800:'#6b21a8',900:'#581c87',950:'#3b0764'},
+    fuchsia:{50:'#fdf4ff',100:'#fae8ff',200:'#f5d0fe',300:'#f0abfc',400:'#e879f9',500:'#d946ef',600:'#c026d3',700:'#a21caf',800:'#86198f',900:'#701a75',950:'#4a044e'},
+    pink:{50:'#fdf2f8',100:'#fce7f3',200:'#fbcfe8',300:'#f9a8d4',400:'#f472b6',500:'#ec4899',600:'#db2777',700:'#be185d',800:'#9d174d',900:'#831843',950:'#500724'},
+    rose:{50:'#fff1f2',100:'#ffe4e6',200:'#fecdd3',300:'#fda4af',400:'#fb7185',500:'#f43f5e',600:'#e11d48',700:'#be123c',800:'#9f1239',900:'#881337',950:'#4c0519'},
 };
 
 /* ── All Tailwind classes for search ────────────────────────────────────── */
@@ -82,6 +93,23 @@ const ALL_CLASSES: string[] = (() => {
     ['white','black','transparent','current','inherit'].forEach(c => {
         list.push(`bg-${c}`,`text-${c}`,`border-${c}`);
     });
+    // Gradients
+    ['t','tr','r','br','b','bl','l','tl'].forEach(d => list.push(`bg-gradient-to-${d}`, `bg-linear-to-${d}`));
+    [0,10,15,30,45,60,65,90,120,135,180,225,270,315].forEach(d => {
+        list.push(`bg-linear-${d}`, `bg-conic-${d}`);
+    });
+    list.push('bg-radial','bg-radial-[at_50%_75%]','bg-radial-[at_25%_25%]','bg-conic','bg-none');
+    ['srgb','hsl','oklab','oklch','longer','shorter','increasing','decreasing'].forEach(mode => {
+        list.push(`bg-linear-to-r/${mode}`, `bg-radial/${mode}`, `bg-conic/${mode}`);
+    });
+    [0,5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100].forEach(p => {
+        list.push(`from-${p}%`, `via-${p}%`, `to-${p}%`);
+    });
+    for (const color of TAILWIND_COLORS) {
+        for (const shade of COLOR_SHADES) {
+            list.push(`from-${color}-${shade}`, `via-${color}-${shade}`, `to-${color}-${shade}`);
+        }
+    }
     // Layout
     ['block','inline-block','inline','flex','inline-flex','grid','inline-grid','hidden','contents'].forEach(d => list.push(d));
     ['flex-row','flex-col','flex-row-reverse','flex-col-reverse'].forEach(d => list.push(d));
@@ -107,9 +135,11 @@ const ALL_CLASSES: string[] = (() => {
     // Border
     ['none','sm','','md','lg','xl','2xl','3xl','full'].forEach(r => list.push(`rounded${r ? '-'+r : ''}`));
     ['0','','2','4','8'].forEach(w => list.push(`border${w ? '-'+w : ''}`));
+    ['x','y','t','r','b','l'].forEach(side => ['0','','2','4','8'].forEach(w => list.push(`border-${side}${w ? '-'+w : ''}`)));
     list.push('border-solid','border-dashed','border-dotted','border-double','border-none');
+    [0,1,2,4,8].forEach(w => list.push(`ring${w ? '-'+w : ''}`, `ring-offset-${w}`));
     // Shadow
-    ['sm','','md','lg','xl','2xl','inner','none'].forEach(s => list.push(`shadow${s ? '-'+s : ''}`));
+    ['xs','sm','','md','lg','xl','2xl','inner','none'].forEach(s => list.push(`shadow${s ? '-'+s : ''}`));
     // Opacity
     [0,5,10,20,25,30,40,50,60,70,75,80,90,95,100].forEach(n => list.push(`opacity-${n}`));
     // Position
@@ -150,23 +180,139 @@ const ALL_CLASSES: string[] = (() => {
     return [...new Set(list)];
 })();
 
+const GRADIENT_TEMPLATES = [
+    { name: 'Sunset', classes: 'bg-linear-to-r from-orange-500 via-pink-500 to-purple-600' },
+    { name: 'Ocean', classes: 'bg-linear-to-r from-cyan-500 to-blue-600' },
+    { name: 'Dusk', classes: 'bg-linear-to-r from-indigo-500 via-purple-500 to-pink-500' },
+    { name: 'Sunrise', classes: 'bg-linear-to-r from-yellow-400 via-orange-500 to-red-500' },
+    { name: 'Cool Water', classes: 'bg-linear-to-r from-sky-400 via-cyan-300 to-teal-400' },
+    { name: 'Warm Sand', classes: 'bg-linear-to-r from-amber-200 via-orange-300 to-rose-300' },
+    { name: 'Tropical Rainforest', classes: 'bg-linear-to-r from-emerald-500 via-teal-500 to-lime-500' },
+    { name: 'Desert', classes: 'bg-linear-to-r from-yellow-200 via-orange-400 to-amber-700' },
+    { name: 'Iceberg', classes: 'bg-linear-to-r from-slate-100 via-sky-200 to-blue-400' },
+    { name: 'Lavender Field', classes: 'bg-linear-to-r from-violet-300 via-purple-400 to-fuchsia-500' },
+    { name: 'Peachy', classes: 'bg-linear-to-r from-orange-200 via-pink-300 to-rose-400' },
+    { name: 'Midnight Sky', classes: 'bg-linear-to-r from-slate-900 via-indigo-900 to-sky-900' },
+    { name: 'Limeade', classes: 'bg-linear-to-r from-lime-300 via-green-400 to-emerald-500' },
+    { name: 'Coral Reef', classes: 'bg-linear-to-r from-rose-400 via-orange-300 to-cyan-400' },
+    { name: 'Cool Mint', classes: 'bg-linear-to-r from-teal-200 via-emerald-300 to-lime-300' },
+    { name: 'Deep Sea', classes: 'bg-linear-to-r from-cyan-900 via-blue-900 to-indigo-950' },
+    { name: 'Citrus', classes: 'bg-linear-to-r from-yellow-300 via-lime-400 to-green-500' },
+    { name: 'Violet', classes: 'bg-linear-to-r from-violet-600 via-purple-600 to-indigo-600' },
+    { name: 'Rose Petal', classes: 'bg-linear-to-r from-rose-100 via-pink-300 to-red-400' },
+    { name: 'Blue Lagoon', classes: 'bg-linear-to-r from-blue-500 via-cyan-400 to-teal-300' },
+];
+
+const GRADIENT_CLASS_RE = /^(?:-?bg-(?:gradient-to|linear-to)-|(?:-?bg-linear-\d+)|bg-radial(?:$|[-[/])|(?:-?bg-conic(?:$|[-/]))|from-|via-|to-)/;
+const BG_COLOR_RE = /^bg-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-(?:50|100|200|300|400|500|600|700|800|900|950)$|^bg-(?:white|black|transparent|current|inherit)$/;
+
+const SPACE_VALUES: Record<string, string> = {
+    '0': '0px', 'px': '1px',
+    '0.5': '0.125rem (2px)', '1': '0.25rem (4px)', '1.5': '0.375rem (6px)',
+    '2': '0.5rem (8px)', '2.5': '0.625rem (10px)', '3': '0.75rem (12px)', '3.5': '0.875rem (14px)',
+    '4': '1rem (16px)', '5': '1.25rem (20px)', '6': '1.5rem (24px)', '7': '1.75rem (28px)',
+    '8': '2rem (32px)', '9': '2.25rem (36px)', '10': '2.5rem (40px)', '11': '2.75rem (44px)',
+    '12': '3rem (48px)', '14': '3.5rem (56px)', '16': '4rem (64px)', '20': '5rem (80px)',
+    '24': '6rem (96px)', '28': '7rem (112px)', '32': '8rem (128px)', '36': '9rem (144px)',
+    '40': '10rem (160px)', '44': '11rem (176px)', '48': '12rem (192px)', '52': '13rem (208px)',
+    '56': '14rem (224px)', '60': '15rem (240px)', '64': '16rem (256px)', '72': '18rem (288px)',
+    '80': '20rem (320px)', '96': '24rem (384px)',
+};
+
+const TEXT_SIZE_VALUES: Record<string, string> = {
+    xs: 'font-size: 0.75rem (12px); line-height: 1rem (16px)',
+    sm: 'font-size: 0.875rem (14px); line-height: 1.25rem (20px)',
+    base: 'font-size: 1rem (16px); line-height: 1.5rem (24px)',
+    lg: 'font-size: 1.125rem (18px); line-height: 1.75rem (28px)',
+    xl: 'font-size: 1.25rem (20px); line-height: 1.75rem (28px)',
+    '2xl': 'font-size: 1.5rem (24px); line-height: 2rem (32px)',
+    '3xl': 'font-size: 1.875rem (30px); line-height: 2.25rem (36px)',
+    '4xl': 'font-size: 2.25rem (36px); line-height: 2.5rem (40px)',
+    '5xl': 'font-size: 3rem (48px); line-height: 1',
+    '6xl': 'font-size: 3.75rem (60px); line-height: 1',
+    '7xl': 'font-size: 4.5rem (72px); line-height: 1',
+    '8xl': 'font-size: 6rem (96px); line-height: 1',
+    '9xl': 'font-size: 8rem (128px); line-height: 1',
+};
+
+const FONT_WEIGHT_VALUES: Record<string, string> = {
+    thin: 'font-weight: 100',
+    extralight: 'font-weight: 200',
+    light: 'font-weight: 300',
+    normal: 'font-weight: 400',
+    medium: 'font-weight: 500',
+    semibold: 'font-weight: 600',
+    bold: 'font-weight: 700',
+    extrabold: 'font-weight: 800',
+    black: 'font-weight: 900',
+};
+
+const RADIUS_VALUES: Record<string, string> = {
+    'rounded-none': 'border-radius: 0px',
+    'rounded-sm': 'border-radius: 0.125rem (2px)',
+    rounded: 'border-radius: 0.25rem (4px)',
+    'rounded-md': 'border-radius: 0.375rem (6px)',
+    'rounded-lg': 'border-radius: 0.5rem (8px)',
+    'rounded-xl': 'border-radius: 0.75rem (12px)',
+    'rounded-2xl': 'border-radius: 1rem (16px)',
+    'rounded-3xl': 'border-radius: 1.5rem (24px)',
+    'rounded-full': 'border-radius: 9999px',
+};
+
+const BORDER_WIDTH_VALUES: Record<string, string> = {
+    border: 'border-width: 1px',
+    'border-0': 'border-width: 0px',
+    'border-2': 'border-width: 2px',
+    'border-4': 'border-width: 4px',
+    'border-8': 'border-width: 8px',
+};
+
+const RING_WIDTH_VALUES: Record<string, string> = {
+    ring: 'box-shadow ring width: 3px',
+    'ring-0': 'box-shadow ring width: 0px',
+    'ring-1': 'box-shadow ring width: 1px',
+    'ring-2': 'box-shadow ring width: 2px',
+    'ring-4': 'box-shadow ring width: 4px',
+    'ring-8': 'box-shadow ring width: 8px',
+};
+
+const SHADOW_VALUES: Record<string, string> = {
+    'shadow-xs': 'box-shadow: 0 1px 1px 0 rgb(0 0 0 / 0.05)',
+    'shadow-sm': 'box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05)',
+    shadow: 'box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)',
+    'shadow-md': 'box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+    'shadow-lg': 'box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
+    'shadow-xl': 'box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)',
+    'shadow-2xl': 'box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25)',
+    'shadow-inner': 'box-shadow: inset 0 2px 4px 0 rgb(0 0 0 / 0.05)',
+    'shadow-none': 'box-shadow: 0 0 #0000',
+};
+
 /* ── Color swatch builder ───────────────────────────────────────────────── */
-function buildColorSwatches(prefix: 'bg' | 'text'): string {
-    let html = '<div class="color-grid">';
-    html += `<div class="color-row">
-      <div class="swatch swatch-white" data-class="${prefix}-white" title="${prefix}-white"></div>
-      <div class="swatch swatch-black" data-class="${prefix}-black" title="${prefix}-black"></div>
+function buildColorSwatches(prefix: 'bg' | 'text' | 'border' | 'ring'): string {
+    const label = prefix === 'bg' ? 'Background' : prefix === 'text' ? 'Texto' : prefix === 'border' ? 'Borda' : 'Ring';
+    let grid = '<div class="color-grid">';
+    grid += `<div class="color-row">
+      <div class="swatch swatch-white" data-class="${prefix}-white" title="${prefix}-white: #ffffff"></div>
+      <div class="swatch swatch-black" data-class="${prefix}-black" title="${prefix}-black: #000000"></div>
     </div>`;
     for (const color of TAILWIND_COLORS) {
-        html += '<div class="color-row">';
+        grid += '<div class="color-row">';
         for (const shade of COLOR_SHADES) {
             const hex = COLOR_HEX[color]?.[shade] ?? '#888';
-            html += `<div class="swatch" style="background:${hex}" data-class="${prefix}-${color}-${shade}" title="${prefix}-${color}-${shade}"></div>`;
+            grid += `<div class="swatch" style="background:${hex}" data-class="${prefix}-${color}-${shade}" title="${prefix}-${color}-${shade}: ${hex}"></div>`;
         }
-        html += '</div>';
+        grid += '</div>';
     }
-    html += '</div>';
-    return html;
+    grid += '</div>';
+    return `
+      <div class="color-picker" data-prefix="${prefix}">
+        <button class="color-picker-trigger" type="button" title="Escolher cor de ${label}">
+          <span class="swatch-preview"></span>
+          <span>${label}</span>
+        </button>
+        <div class="color-popover hidden">${grid}</div>
+      </div>`;
 }
 
 /* ── CSS ────────────────────────────────────────────────────────────────── */
@@ -175,12 +321,12 @@ const CSS = `
 * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 #panel {
   position: fixed; top: 80px; right: 16px; z-index: 2147483647;
-  width: 310px; max-height: calc(100vh - 100px);
+  width: 310px; height: min(760px, calc(100vh - 100px)); min-width: 280px; min-height: 220px; max-width: min(620px, calc(100vw - 24px)); max-height: calc(100vh - 100px);
   background: #141414; color: #e5e5e5;
   border: 1px solid #2a2a2a; border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0,0,0,.6);
   display: flex; flex-direction: column;
-  font-size: 12px; overflow: hidden;
+  font-size: 12px; overflow: hidden; resize: both;
 }
 #panel-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -215,6 +361,21 @@ const CSS = `
 }
 .chip:hover { background: #2a2a2a; color: #e5e5e5; }
 .chip.active { background: #6366f1; border-color: #6366f1; color: white; }
+.color-picker { position: relative; width: 100%; max-width: 190px; }
+.color-picker-trigger {
+  width: 100%; display: inline-flex; align-items: center; gap: 7px;
+  background: #1a1a1a; border: 1px solid #2a2a2a; color: #ddd;
+  border-radius: 6px; padding: 5px 7px; font-size: 11px; cursor: pointer;
+}
+.color-picker-trigger:hover { border-color: #444; background: #202020; }
+.swatch-preview { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #555; background: linear-gradient(135deg,#fff,#111); flex-shrink: 0; }
+.color-popover {
+  position: absolute; top: calc(100% + 5px); left: 0; z-index: 40;
+  background: #101010; border: 1px solid #2a2a2a; border-radius: 8px;
+  padding: 8px; box-shadow: 0 12px 34px rgba(0,0,0,.55);
+  max-height: 260px; overflow: auto;
+}
+.color-popover.hidden { display: none; }
 .color-grid { display: flex; flex-direction: column; gap: 2px; }
 .color-row { display: flex; gap: 2px; }
 .swatch { width: 16px; height: 16px; border-radius: 3px; cursor: pointer; border: 1.5px solid transparent; transition: transform .1s, border-color .1s; flex-shrink: 0; }
@@ -222,6 +383,39 @@ const CSS = `
 .swatch.active { border-color: white; transform: scale(1.2); }
 .swatch-white { background: white; }
 .swatch-black { background: black; }
+.gradient-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; }
+.gradient-chip {
+  min-height: 34px; border-radius: 7px; border: 1px solid #2a2a2a; cursor: pointer;
+  color: white; font-size: 10px; font-weight: 600; display: flex; align-items: flex-end;
+  padding: 6px; text-shadow: 0 1px 2px rgba(0,0,0,.45); overflow: hidden;
+}
+.gradient-chip:hover { border-color: #fff; }
+.gradient-controls {
+  width: 100%; display: flex; flex-direction: column; gap: 7px;
+  border: 1px solid #232323; border-radius: 8px; padding: 8px; background: #111;
+}
+.gradient-empty {
+  width: 100%; display: flex; flex-direction: column; gap: 6px;
+  border: 1px dashed #2a2a2a; border-radius: 8px; padding: 8px; background: #111;
+}
+.control-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; }
+.control-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.control-label { font-size: 9px; color: #555; text-transform: uppercase; letter-spacing: .06em; }
+.control-input, .control-select {
+  width: 100%; min-width: 0; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 5px;
+  color: #ddd; padding: 5px 6px; font-size: 11px; outline: none;
+}
+.control-input:focus, .control-select:focus { border-color: #6366f1; }
+.stop-grid { display: grid; grid-template-columns: 1fr 52px; gap: 5px; align-items: end; }
+.mini-btn-row { display: flex; gap: 6px; }
+.mini-btn {
+  flex: 1; background: #1e1e1e; color: #888; border: 1px solid #2a2a2a; border-radius: 6px;
+  padding: 5px 6px; font-size: 11px; cursor: pointer;
+}
+.mini-btn:hover { background: #2a2a2a; color: #e5e5e5; }
+.mini-btn.primary { background: #4f46e5; color: white; border-color: #4f46e5; }
+.mini-btn.danger { color: #f87171; }
+.gradient-output { font-size: 10px; color: #666; font-family: monospace; line-height: 1.4; word-break: break-word; }
 /* Search */
 .search-wrap { position: relative; }
 .search-input {
@@ -241,6 +435,20 @@ const CSS = `
 .suggestion:hover { background: #6366f1; color: white; }
 .suggestion.active-cls { color: #4ade80; }
 .suggestion-badge { font-size: 9px; opacity: .5; }
+.suggestion-group { padding: 6px 10px 3px; color: #555; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; border-top: 1px solid #242424; }
+.suggestion-group:first-child { border-top: none; }
+.suggestion-category {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; padding: 7px 10px; border: 0; border-top: 1px solid #242424;
+  background: transparent; color: #aaa; cursor: pointer;
+  font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+}
+.suggestion-category:first-child { border-top: 0; }
+.suggestion-category:hover { background: #202020; color: #fff; }
+.suggestion-category-count { color: #555; font-size: 9px; font-weight: 600; }
+.suggestion-category-items { display: none; border-top: 1px solid #222; }
+.suggestion-category-items.open { display: block; }
+.suggestion-category-items .suggestion { padding-left: 16px; }
 /* Classes textarea */
 .classes-input {
   width: 100%; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px;
@@ -282,6 +490,17 @@ const CSS = `
 }
 .prefix-btn:hover { background: #2a2a2a; color: #ccc; }
 .prefix-btn.active { background: #4338ca; border-color: #4338ca; color: #c7d2fe; }
+.scope-control {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  background: #101010; border: 1px solid #222; border-radius: 7px; padding: 3px;
+}
+.scope-btn {
+  border: none; border-radius: 5px; padding: 5px 6px; cursor: pointer;
+  background: transparent; color: #777; font-size: 11px; font-weight: 600;
+}
+.scope-btn:hover { color: #ddd; background: #1e1e1e; }
+.scope-btn.active { background: #4338ca; color: #e0e7ff; }
+.scope-hint { font-size: 10px; color: #555; line-height: 1.35; }
 /* Toast */
 .toast {
   position: fixed; bottom: 20px; right: 16px; z-index: 2147483648;
@@ -298,7 +517,7 @@ const CSS = `
 
 function chips(values: string[]): string {
     return `<div class="chips">${values.map(v =>
-        `<div class="chip" data-class="${v}">${v.replace(/^(text|font|flex|justify|items|self|rounded|gap|w|h|max-w|min-w|max-h|min-h|grid-cols|col-span|grid-rows|row-span|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr)-/, '')}</div>`
+        `<div class="chip" data-class="${v}" title="${classTooltip(v)}">${v.replace(/^(text|font|flex|justify|items|self|rounded|gap|w|h|max-w|min-w|max-h|min-h|grid-cols|col-span|grid-rows|row-span|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr)-/, '')}</div>`
     ).join('')}</div>`;
 }
 
@@ -306,11 +525,326 @@ function buildCurrentClassChips(classes: string): string {
     const list = classes.split(/\s+/).filter(Boolean);
     if (!list.length) return '<span style="font-size:10px;color:#444">Nenhuma classe</span>';
     return `<div class="chips">${list.map(cls =>
-        `<div class="chip active" data-class="${cls}" title="${cls}">${cls}</div>`
+        `<div class="chip active" data-class="${cls}" title="${classTooltip(cls)}">${cls}</div>`
     ).join('')}</div>`;
 }
 
-function buildPanel(oid: string, tag: string, currentClasses: string, currentText: string, currentPlaceholder: string): string {
+const CLASS_CATEGORIES = [
+    { name: 'Layout', keywords: ['layout', 'display', 'position', 'overflow', 'z-index'], match: (c: string) => /^(block|inline|inline-block|hidden|contents|static|fixed|absolute|relative|sticky|overflow|z-)/.test(c) },
+    { name: 'Flexbox & Grid', keywords: ['flex', 'grid', 'align', 'justify'], match: (c: string) => /^(flex|inline-flex|grid|inline-grid|basis|grow|shrink|justify-|items-|self-|content-|place-|grid-|col-|row-)/.test(c) },
+    { name: 'Spacing', keywords: ['spacing', 'padding', 'margin', 'gap'], match: (c: string) => /^(p|px|py|pt|pr|pb|pl|m|mx|my|mt|mr|mb|ml|gap|space-[xy])-/.test(c) },
+    { name: 'Sizing', keywords: ['size', 'width', 'height'], match: (c: string) => /^(w|h|min-w|max-w|min-h|max-h|size|aspect)-/.test(c) },
+    { name: 'Typography', keywords: ['type', 'font', 'text', 'leading', 'tracking'], match: (c: string) => /^(text|font|leading|tracking|uppercase|lowercase|capitalize|normal-case|underline|line-through|no-underline|whitespace|truncate)/.test(c) },
+    { name: 'Backgrounds', keywords: ['background', 'color', 'gradient'], match: (c: string) => /^(bg-|from-|via-|to-)/.test(c) },
+    { name: 'Borders', keywords: ['border', 'radius', 'ring', 'outline'], match: (c: string) => /^(border|rounded|ring|outline)-?/.test(c) },
+    { name: 'Effects', keywords: ['effect', 'shadow', 'opacity', 'blend'], match: (c: string) => /^(shadow|opacity|mix-blend|bg-blend)-?/.test(c) },
+    { name: 'Filters', keywords: ['filter', 'blur', 'brightness', 'contrast'], match: (c: string) => /^(blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|saturate|sepia|backdrop)-/.test(c) },
+    { name: 'Tables', keywords: ['table'], match: (c: string) => /^(table|border-collapse|border-separate|caption)-?/.test(c) },
+    { name: 'Transitions & Animation', keywords: ['transition', 'animation', 'duration', 'ease'], match: (c: string) => /^(transition|duration|ease|delay|animate)-?/.test(c) },
+    { name: 'Transforms', keywords: ['transform', 'scale', 'rotate', 'translate', 'skew'], match: (c: string) => /^(transform|scale|rotate|translate|skew|origin)-?/.test(c) },
+    { name: 'Interactivity', keywords: ['cursor', 'pointer', 'select', 'resize', 'scroll'], match: (c: string) => /^(cursor|pointer-events|select|resize|scroll|snap|touch|user)-?/.test(c) },
+    { name: 'SVG', keywords: ['svg', 'fill', 'stroke'], match: (c: string) => /^(fill|stroke)-/.test(c) },
+    { name: 'Accessibility', keywords: ['accessibility', 'screen reader', 'sr'], match: (c: string) => /^(sr-only|not-sr-only)$/.test(c) },
+];
+
+function classCategory(cls: string): string {
+    const base = getBaseClass(cls);
+    return CLASS_CATEGORIES.find(group => group.match(base))?.name ?? 'Other';
+}
+
+function categoryMatchesQuery(cls: string, q: string): boolean {
+    if (!q) return false;
+    const base = getBaseClass(cls);
+    const group = CLASS_CATEGORIES.find(item => item.match(base));
+    if (!group) return false;
+    const haystack = [group.name, ...group.keywords].join(' ').toLowerCase();
+    return haystack.includes(q);
+}
+
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+const BREAKPOINT_TOOLTIPS: Record<string, string> = {
+    '': 'Default/mobile: applies at all viewport widths unless overridden.',
+    'sm:': 'sm: Minimum width of 40rem (640px).',
+    'md:': 'md: Minimum width of 48rem (768px).',
+    'lg:': 'lg: Minimum width of 64rem (1024px).',
+    'xl:': 'xl: Minimum width of 80rem (1280px).',
+    '2xl:': '2xl: Minimum width of 96rem (1536px).',
+};
+
+function classTooltip(cls: string): string {
+    const prefixMatch = cls.match(/^((?:[a-z0-9-]+:)+)(.+)$/);
+    const prefixes = prefixMatch?.[1] ?? '';
+    const base = prefixMatch?.[2] ?? cls;
+    const prefixText = prefixes
+        ? prefixes.split(':').filter(Boolean).map(p => BREAKPOINT_TOOLTIPS[`${p}:`] ?? `${p}: variant`).join(' ')
+        : '';
+    let detail = `${base}: Tailwind ${classCategory(base)} utility.`;
+    if (/^2xl:/.test(cls)) detail = `${base}: ${BREAKPOINT_TOOLTIPS['2xl:']}`;
+    else if (/^sm:|^md:|^lg:|^xl:/.test(cls)) detail = `${base}: ${prefixText}`;
+    else if (TEXT_SIZE_VALUES[base.replace(/^text-/, '')]) detail = `${base}: ${TEXT_SIZE_VALUES[base.replace(/^text-/, '')]}`;
+    else if (FONT_WEIGHT_VALUES[base.replace(/^font-/, '')]) detail = `${base}: ${FONT_WEIGHT_VALUES[base.replace(/^font-/, '')]}`;
+    else if (RADIUS_VALUES[base]) detail = `${base}: ${RADIUS_VALUES[base]}`;
+    else if (BORDER_WIDTH_VALUES[base]) detail = `${base}: ${BORDER_WIDTH_VALUES[base]}`;
+    else if (RING_WIDTH_VALUES[base]) detail = `${base}: ${RING_WIDTH_VALUES[base]}`;
+    else if (SHADOW_VALUES[base]) detail = `${base}: ${SHADOW_VALUES[base]}`;
+    else {
+        const spacing = base.match(/^(p|px|py|pt|pr|pb|pl|m|mx|my|mt|mr|mb|ml|gap|gap-x|gap-y|space-x|space-y)-(.+)$/);
+        const sizing = base.match(/^(w|h|min-w|max-w|min-h|max-h)-(.+)$/);
+        const gridCols = base.match(/^grid-cols-(\d+)$/);
+        const colSpan = base.match(/^col-span-(\d+)$/);
+        const borderSide = base.match(/^border-([xytrbl])(?:-(0|2|4|8))?$/);
+        const ringOffset = base.match(/^ring-offset-(0|1|2|4|8)$/);
+        const opacity = base.match(/^opacity-(\d+)$/);
+        const duration = base.match(/^duration-(\d+)$/);
+        const color = colorValueForClass(base);
+
+        if (spacing && SPACE_VALUES[spacing[2]!]) {
+            const propMap: Record<string, string> = {
+                p: 'padding', px: 'padding-left/right', py: 'padding-top/bottom', pt: 'padding-top', pr: 'padding-right', pb: 'padding-bottom', pl: 'padding-left',
+                m: 'margin', mx: 'margin-left/right', my: 'margin-top/bottom', mt: 'margin-top', mr: 'margin-right', mb: 'margin-bottom', ml: 'margin-left',
+                gap: 'gap', 'gap-x': 'column-gap', 'gap-y': 'row-gap', 'space-x': 'horizontal child spacing', 'space-y': 'vertical child spacing',
+            };
+            detail = `${base}: ${propMap[spacing[1]!] ?? spacing[1]} = ${SPACE_VALUES[spacing[2]!]}`;
+        } else if (sizing && SPACE_VALUES[sizing[2]!]) {
+            const propMap: Record<string, string> = { w: 'width', h: 'height', 'min-w': 'min-width', 'max-w': 'max-width', 'min-h': 'min-height', 'max-h': 'max-height' };
+            detail = `${base}: ${propMap[sizing[1]!] ?? sizing[1]} = ${SPACE_VALUES[sizing[2]!]}`;
+        } else if (base === 'w-full' || base === 'h-full') detail = `${base}: ${base[0] === 'w' ? 'width' : 'height'} = 100%`;
+        else if (base === 'w-screen') detail = `${base}: width = 100vw`;
+        else if (base === 'h-screen') detail = `${base}: height = 100vh`;
+        else if (gridCols) detail = `${base}: grid-template-columns = repeat(${gridCols[1]}, minmax(0, 1fr))`;
+        else if (base === 'grid-cols-none') detail = `${base}: grid-template-columns = none`;
+        else if (colSpan) detail = `${base}: grid-column = span ${colSpan[1]} / span ${colSpan[1]}`;
+        else if (base === 'col-span-full') detail = `${base}: grid-column = 1 / -1`;
+        else if (borderSide) {
+            const sideMap: Record<string, string> = { x: 'left/right', y: 'top/bottom', t: 'top', r: 'right', b: 'bottom', l: 'left' };
+            detail = `${base}: border-${sideMap[borderSide[1]!] ?? borderSide[1]} width = ${borderSide[2] ?? 1}px`;
+        } else if (/^border-(solid|dashed|dotted|double|none)$/.test(base)) detail = `${base}: border-style = ${base.replace('border-', '')}`;
+        else if (ringOffset) detail = `${base}: --tw-ring-offset-width = ${ringOffset[1]}px`;
+        else if (opacity) detail = `${base}: opacity = ${Number(opacity[1]) / 100}`;
+        else if (duration) detail = `${base}: transition-duration = ${duration[1]}ms`;
+        else if (color) detail = `${base}: ${base.startsWith('bg-') ? 'background-color' : base.startsWith('text-') ? 'color' : base.startsWith('border-') ? 'border-color' : 'color'} = ${color}`;
+        else if (/^bg-(?:gradient|linear|radial|conic)/.test(base)) detail = `${base}: background-image gradient utility.`;
+        else if (/^(from|via|to)-\d+%$/.test(base)) detail = `${base}: gradient color stop position.`;
+        else if (/^(from|via|to)-/.test(base) && colorValueForClass(base)) detail = `${base}: gradient stop color = ${colorValueForClass(base)}`;
+        else if (/^flex/.test(base)) detail = `${base}: flexbox utility.`;
+        else if (/^text-/.test(base)) detail = `${base}: text color/alignment/size utility.`;
+        else if (/^bg-/.test(base)) detail = `${base}: background color/image utility.`;
+    }
+    return prefixText && !detail.includes(prefixText) ? `${prefixText} ${detail}` : detail;
+}
+
+function buildGradientTemplates(): string {
+    return `<div class="gradient-grid">${GRADIENT_TEMPLATES.map(g => {
+        const colors = g.classes.split(/\s+/).filter(c => /^(from|via|to)-/.test(c));
+        const cssColors = colors.map(c => {
+            const [, role, color, shade] = c.match(/^(from|via|to)-([a-z-]+)-(\d+)$/) ?? [];
+            return role && color && shade ? COLOR_HEX[color]?.[Number(shade)] : undefined;
+        }).filter(Boolean);
+        const bg = cssColors.length ? `linear-gradient(90deg, ${cssColors.join(', ')})` : '#333';
+        return `<div class="gradient-chip" style="background:${bg}" data-classes="${g.classes}" title="${g.classes}">${g.name}</div>`;
+    }).join('')}</div>`;
+}
+
+function colorOptions(selected: string): string {
+    const options: string[] = [];
+    for (const color of TAILWIND_COLORS) {
+        for (const shade of [100,200,300,400,500,600,700,800,900]) {
+            const value = `${color}-${shade}`;
+            options.push(`<option value="${value}"${value === selected ? ' selected' : ''}>${value}</option>`);
+        }
+    }
+    return options.join('');
+}
+
+function getBaseClass(cls: string): string {
+    return cls.replace(/^(?:[a-z0-9-]+:)+/, '');
+}
+
+function isGradientClass(cls: string): boolean {
+    return GRADIENT_CLASS_RE.test(getBaseClass(cls));
+}
+
+function hasGradientClasses(classes: string): boolean {
+    return classes.split(/\s+/).filter(Boolean).some(isGradientClass);
+}
+
+function colorValueForClass(cls: string): string | null {
+    const base = getBaseClass(cls);
+    const named = base.match(/^(?:bg|text|border|ring)-(white|black|transparent)$/)?.[1];
+    if (named === 'white') return '#fff';
+    if (named === 'black') return '#000';
+    if (named === 'transparent') return 'transparent';
+    const match = base.match(/^(?:bg|text|border|ring|from|via|to)-([a-z-]+)-(\d+)$/);
+    if (!match) return null;
+    return COLOR_HEX[match[1] ?? '']?.[Number(match[2])] ?? null;
+}
+
+function gradientStateFromClasses(classes: string): {
+    type: 'linear' | 'radial' | 'conic';
+    direction: string;
+    linearAngle: string;
+    radialPosition: string;
+    conicAngle: string;
+    interpolation: string;
+    fromColor: string;
+    viaColor: string;
+    toColor: string;
+    fromPos: string;
+    viaPos: string;
+    toPos: string;
+} {
+    const list = classes.split(/\s+/).filter(Boolean).map(getBaseClass);
+    const bg = list.find(c => /^-?bg-(?:gradient-to|linear-to)-/.test(c) || /^-?bg-linear-\d+/.test(c) || /^bg-radial/.test(c) || /^-?bg-conic/.test(c));
+    const [bgBase, interpolation = ''] = (bg ?? '').split('/') as [string, string?];
+    const type = bgBase?.includes('radial') ? 'radial' : bgBase?.includes('conic') ? 'conic' : 'linear';
+    const direction = bgBase?.match(/(?:gradient-to|linear-to)-([a-z]+)$/)?.[1] ?? 'r';
+    const linearAngle = bgBase?.match(/bg-linear-(\d+)$/)?.[1] ?? '';
+    const radialPosition = bgBase?.match(/^bg-radial-\[(.+)\]$/)?.[1] ?? '';
+    const conicAngle = bgBase?.match(/bg-conic-(\d+)$/)?.[1] ?? '';
+    const colorFor = (kind: 'from' | 'via' | 'to', fallback: string) => {
+        const match = list.find(c => new RegExp(`^${kind}-[a-z-]+-\\d+$`).test(c));
+        return match ? match.replace(`${kind}-`, '') : fallback;
+    };
+    const posFor = (kind: 'from' | 'via' | 'to', fallback: string) => {
+        const match = list.find(c => new RegExp(`^${kind}-\\d+%$`).test(c));
+        return match ? match.replace(`${kind}-`, '').replace('%', '') : fallback;
+    };
+    return {
+        type,
+        direction,
+        linearAngle,
+        radialPosition,
+        conicAngle,
+        interpolation,
+        fromColor: colorFor('from', 'cyan-500'),
+        viaColor: colorFor('via', 'purple-500'),
+        toColor: colorFor('to', 'blue-600'),
+        fromPos: posFor('from', '0'),
+        viaPos: posFor('via', '50'),
+        toPos: posFor('to', '100'),
+    };
+}
+
+function buildGradientControls(currentClasses: string, open: boolean): string {
+    if (!open && !hasGradientClasses(currentClasses)) {
+        return `
+          <div class="gradient-empty">
+            <button class="mini-btn primary" id="grad-open-btn" type="button">+ Editor de gradiente</button>
+            <div class="gradient-output">Nenhum gradiente ativo.</div>
+          </div>`;
+    }
+
+    const state = gradientStateFromClasses(currentClasses);
+    const directions = [
+        ['t','top'],['tr','top right'],['r','right'],['br','bottom right'],
+        ['b','bottom'],['bl','bottom left'],['l','left'],['tl','top left'],
+    ];
+    const modes = ['', 'srgb', 'hsl', 'oklab', 'oklch', 'longer', 'shorter', 'increasing', 'decreasing'];
+    const radialPositions = [
+        ['', 'center'],
+        ['at_50%_75%', 'at 50% 75%'],
+        ['at_25%_25%', 'at 25% 25%'],
+        ['at_75%_25%', 'at 75% 25%'],
+    ];
+    const classes = buildGradientClassSet(state);
+    return `
+      <div class="gradient-controls">
+        <div class="control-grid">
+          <label class="control-field">
+            <span class="control-label">Tipo</span>
+            <select class="control-select" id="grad-type">
+              ${['linear','radial','conic'].map(v => `<option value="${v}"${state.type === v ? ' selected' : ''}>${v}</option>`).join('')}
+            </select>
+          </label>
+          <label class="control-field">
+            <span class="control-label">Interpolação</span>
+            <select class="control-select" id="grad-mode">
+              ${modes.map(v => `<option value="${v}"${state.interpolation === v ? ' selected' : ''}>${v || 'default'}</option>`).join('')}
+            </select>
+          </label>
+          <label class="control-field" data-grad-field="linear">
+            <span class="control-label">Direção</span>
+            <select class="control-select" id="grad-direction">
+              ${directions.map(([v,label]) => `<option value="${v}"${state.direction === v ? ' selected' : ''}>${label}</option>`).join('')}
+            </select>
+          </label>
+          <label class="control-field" data-grad-field="linear">
+            <span class="control-label">Ângulo</span>
+            <input class="control-input" id="grad-linear-angle" value="${state.linearAngle}" placeholder="ex: 65" inputmode="numeric" />
+          </label>
+          <label class="control-field" data-grad-field="radial">
+            <span class="control-label">Posição</span>
+            <select class="control-select" id="grad-radial-position">
+              ${radialPositions.map(([v,label]) => `<option value="${v}"${state.radialPosition === v ? ' selected' : ''}>${label}</option>`).join('')}
+            </select>
+          </label>
+          <label class="control-field" data-grad-field="conic">
+            <span class="control-label">Ângulo</span>
+            <input class="control-input" id="grad-conic-angle" value="${state.conicAngle}" placeholder="ex: 180" inputmode="numeric" />
+          </label>
+        </div>
+        <div class="stop-grid">
+          <label class="control-field"><span class="control-label">From</span><select class="control-select" id="grad-from-color">${colorOptions(state.fromColor)}</select></label>
+          <label class="control-field"><span class="control-label">%</span><input class="control-input" id="grad-from-pos" value="${state.fromPos}" inputmode="numeric" /></label>
+          <label class="control-field"><span class="control-label">Via</span><select class="control-select" id="grad-via-color">${colorOptions(state.viaColor)}</select></label>
+          <label class="control-field"><span class="control-label">%</span><input class="control-input" id="grad-via-pos" value="${state.viaPos}" inputmode="numeric" /></label>
+          <label class="control-field"><span class="control-label">To</span><select class="control-select" id="grad-to-color">${colorOptions(state.toColor)}</select></label>
+          <label class="control-field"><span class="control-label">%</span><input class="control-input" id="grad-to-pos" value="${state.toPos}" inputmode="numeric" /></label>
+        </div>
+        <div class="mini-btn-row">
+          <button class="mini-btn danger" id="grad-clear-btn">Limpar</button>
+          <button class="mini-btn primary" id="grad-apply-btn">Aplicar gradiente</button>
+        </div>
+        <div class="gradient-output" id="grad-output">${classes}</div>
+      </div>`;
+}
+
+function buildGradientClassSet(state: ReturnType<typeof gradientStateFromClasses>): string {
+    const mode = state.interpolation ? `/${state.interpolation}` : '';
+    let bgClass = '';
+    if (state.type === 'linear') {
+        bgClass = state.linearAngle.trim() ? `bg-linear-${clampPercent(state.linearAngle)}` : `bg-linear-to-${state.direction || 'r'}`;
+    } else if (state.type === 'radial') {
+        bgClass = state.radialPosition ? `bg-radial-[${state.radialPosition}]` : 'bg-radial';
+    } else {
+        bgClass = state.conicAngle.trim() ? `bg-conic-${clampPercent(state.conicAngle)}` : 'bg-conic';
+    }
+    const classes = [
+        `${bgClass}${mode}`,
+        `from-${state.fromColor}`,
+        `from-${clampPercent(state.fromPos)}%`,
+        `via-${state.viaColor}`,
+        `via-${clampPercent(state.viaPos)}%`,
+        `to-${state.toColor}`,
+        `to-${clampPercent(state.toPos)}%`,
+    ];
+    return classes.join(' ');
+}
+
+function clampPercent(value: string): string {
+    const parsed = Number.parseInt(value || '0', 10);
+    if (Number.isNaN(parsed)) return '0';
+    return String(Math.max(0, Math.min(100, parsed)));
+}
+
+function buildScopeControl(hidden: boolean): string {
+    if (hidden) return '';
+    return `
+      <div class="scope-control">
+        <button class="scope-btn active" data-scope="instance">Aplicação</button>
+        <button class="scope-btn" data-scope="component">Componente</button>
+      </div>`;
+}
+
+function buildPanel(oid: string, tag: string, currentClasses: string, currentText: string, currentPlaceholder: string, gradientEditorOpen: boolean, hideScopeControl: boolean): string {
     const textSizes = ['text-xs','text-sm','text-base','text-lg','text-xl','text-2xl','text-3xl','text-4xl','text-5xl'];
     const fontWeights = ['font-thin','font-light','font-normal','font-medium','font-semibold','font-bold','font-extrabold','font-black'];
     const spNums = ['0','1','2','3','4','5','6','8','10','12','16','20','24'];
@@ -326,6 +860,11 @@ function buildPanel(oid: string, tag: string, currentClasses: string, currentTex
     const myVals   = [...spNums.map(n => `my-${n}`), 'my-auto'];
     const gaps = ['gap-0','gap-1','gap-2','gap-3','gap-4','gap-6','gap-8','gap-10','gap-12'];
     const radii = ['rounded-none','rounded-sm','rounded','rounded-md','rounded-lg','rounded-xl','rounded-2xl','rounded-3xl','rounded-full'];
+    const borderWidths = ['border-0','border','border-2','border-4','border-8'];
+    const borderStyles = ['border-solid','border-dashed','border-dotted','border-double','border-none'];
+    const ringWidths = ['ring-0','ring','ring-1','ring-2','ring-4','ring-8'];
+    const ringOffsets = ['ring-offset-0','ring-offset-1','ring-offset-2','ring-offset-4','ring-offset-8'];
+    const shadows = ['shadow-xs','shadow-sm','shadow','shadow-md','shadow-lg','shadow-xl','shadow-2xl','shadow-inner','shadow-none'];
     const displays = ['block','inline','inline-block','flex','inline-flex','grid','inline-grid','hidden','contents'];
     const flexDir = ['flex-row','flex-col','flex-row-reverse','flex-col-reverse'];
     const flexOpts = ['flex-1','flex-auto','flex-none','grow','grow-0','shrink','shrink-0','flex-wrap','flex-nowrap'];
@@ -365,6 +904,8 @@ function buildPanel(oid: string, tag: string, currentClasses: string, currentTex
             CONTEÚDO <span class="chevron">›</span>
           </div>
           <div class="${col}">
+            ${buildScopeControl(hideScopeControl)}
+            ${hideScopeControl ? '' : '<span class="scope-hint">Aplicação altera só este uso quando o componente expõe props. Componente altera o template global.</span>'}
             ${hasText ? `
             <div style="font-size:10px;color:#555;margin-bottom:3px;font-weight:600;letter-spacing:.05em;text-transform:uppercase">Texto</div>
             <textarea class="text-input" id="text-input" rows="2" spellcheck="false">${currentText}</textarea>
@@ -394,29 +935,31 @@ function buildPanel(oid: string, tag: string, currentClasses: string, currentTex
             CLASSES <span class="chevron">›</span>
           </div>
           <div class="section-content">
+            ${buildScopeControl(hideScopeControl)}
+            ${hideScopeControl ? '' : '<span class="scope-hint">Aplicação tenta editar props do uso selecionado. Componente altera o template original globalmente.</span>'}
             <div id="current-chips">${buildCurrentClassChips(currentClasses)}</div>
             <div class="modifier-strip">
               <div class="modifier-row">
                 <span class="modifier-label">Break</span>
                 <div class="chips">
-                  <div class="prefix-btn" data-prefix-type="responsive" data-prefix-val="">—</div>
-                  <div class="prefix-btn" data-prefix-type="responsive" data-prefix-val="sm:">sm:</div>
-                  <div class="prefix-btn" data-prefix-type="responsive" data-prefix-val="md:">md:</div>
-                  <div class="prefix-btn" data-prefix-type="responsive" data-prefix-val="lg:">lg:</div>
-                  <div class="prefix-btn" data-prefix-type="responsive" data-prefix-val="xl:">xl:</div>
-                  <div class="prefix-btn" data-prefix-type="responsive" data-prefix-val="2xl:">2xl:</div>
+                  <div class="prefix-btn" data-prefix-type="responsive" data-prefix-val="" title="${BREAKPOINT_TOOLTIPS['']}">—</div>
+                  <div class="prefix-btn" data-prefix-type="responsive" data-prefix-val="sm:" title="${BREAKPOINT_TOOLTIPS['sm:']}">sm:</div>
+                  <div class="prefix-btn" data-prefix-type="responsive" data-prefix-val="md:" title="${BREAKPOINT_TOOLTIPS['md:']}">md:</div>
+                  <div class="prefix-btn" data-prefix-type="responsive" data-prefix-val="lg:" title="${BREAKPOINT_TOOLTIPS['lg:']}">lg:</div>
+                  <div class="prefix-btn" data-prefix-type="responsive" data-prefix-val="xl:" title="${BREAKPOINT_TOOLTIPS['xl:']}">xl:</div>
+                  <div class="prefix-btn" data-prefix-type="responsive" data-prefix-val="2xl:" title="${BREAKPOINT_TOOLTIPS['2xl:']}">2xl:</div>
                 </div>
               </div>
               <div class="modifier-row">
                 <span class="modifier-label">Estado</span>
                 <div class="chips">
-                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="">—</div>
-                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="hover:">hover:</div>
-                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="focus:">focus:</div>
-                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="active:">active:</div>
-                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="dark:">dark:</div>
-                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="disabled:">disabled:</div>
-                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="focus-within:">fw:</div>
+                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="" title="Sem variante de estado">—</div>
+                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="hover:" title="Aplica a classe no hover do elemento">hover:</div>
+                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="focus:" title="Aplica a classe quando o elemento recebe foco">focus:</div>
+                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="active:" title="Aplica a classe no estado ativo/pressionado">active:</div>
+                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="dark:" title="Aplica a classe no modo escuro">dark:</div>
+                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="disabled:" title="Aplica a classe quando o elemento está desabilitado">disabled:</div>
+                  <div class="prefix-btn" data-prefix-type="state" data-prefix-val="focus-within:" title="Aplica a classe quando o elemento ou um descendente recebe foco">fw:</div>
                 </div>
               </div>
             </div>
@@ -464,6 +1007,8 @@ function buildPanel(oid: string, tag: string, currentClasses: string, currentTex
           </div>
           <div class="${col}">
             <div class="row">${buildColorSwatches('bg')}</div>
+            <div class="row"><span class="row-label">Editor</span>${buildGradientControls(currentClasses, gradientEditorOpen)}</div>
+            <div class="row"><span class="row-label">Gradiente</span>${buildGradientTemplates()}</div>
           </div>
         </div>
 
@@ -473,6 +1018,21 @@ function buildPanel(oid: string, tag: string, currentClasses: string, currentTex
           </div>
           <div class="${col}">
             <div class="row"><span class="row-label">Radius</span>${chips(radii)}</div>
+            <div class="row"><span class="row-label">Width</span>${chips(borderWidths)}</div>
+            <div class="row"><span class="row-label">Style</span>${chips(borderStyles)}</div>
+            <div class="row"><span class="row-label">Cor</span>${buildColorSwatches('border')}</div>
+            <div class="row"><span class="row-label">Ring</span>${chips(ringWidths)}</div>
+            <div class="row"><span class="row-label">Offset</span>${chips(ringOffsets)}</div>
+            <div class="row"><span class="row-label">Ring cor</span>${buildColorSwatches('ring')}</div>
+          </div>
+        </div>
+
+        <div class="section" id="sec-shadow">
+          <div class="${hdrCol}" data-section="shadow">
+            SOMBRA <span class="chevron">›</span>
+          </div>
+          <div class="${col}">
+            <div class="row"><span class="row-label">Shadow</span>${chips(shadows)}</div>
           </div>
         </div>
 
@@ -511,13 +1071,20 @@ const MUTUALLY_EXCLUSIVE = [
     /^text-(xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|9xl)$/,
     /^font-(thin|extralight|light|normal|medium|semibold|bold|extrabold|black)$/,
     /^bg-/,
-    /^text-(slate|gray|zinc|red|orange|amber|yellow|lime|green|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|white|black)-/,
+    /^text-(slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|white|black)-/,
     /^text-(white|black)$/,
     /^(block|inline-block|inline|flex|inline-flex|grid|inline-grid|hidden|contents)$/,
     /^flex-(row|col|row-reverse|col-reverse)$/,
     /^justify-(start|center|end|between|around|evenly)$/,
     /^items-(start|center|end|stretch|baseline)$/,
     /^rounded(-none|-sm|-md|-lg|-xl|-2xl|-3xl|-full)?$/,
+    /^border(-0|-2|-4|-8)?$/,
+    /^border-(solid|dashed|dotted|double|none)$/,
+    /^border-(slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|white|black)-/,
+    /^ring(-0|-1|-2|-4|-8)?$/,
+    /^ring-offset-/,
+    /^ring-(slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|white|black)-/,
+    /^shadow(-xs|-sm|-md|-lg|-xl|-2xl|-inner|-none)?$/,
     /^gap-/,
     /^p-(\d|auto)/,
     /^px-/,
@@ -568,6 +1135,11 @@ export class VisualEditPanel {
     private dragCleanup: (() => void) | null = null;
     /** DOM text content at the moment the panel opened — used for prop resolution. */
     private originalText = '';
+    private originalPlaceholder = '';
+    private editScope: EditScope = 'instance';
+    private forceScope: EditScope | null = null;
+    private hideScopeControl = false;
+    private gradientEditorOpen = false;
     /** Active responsive breakpoint prefix, e.g. 'lg:' or '' for none. */
     private activeResponsive = '';
     /** Active state variant prefix, e.g. 'hover:' or '' for none. */
@@ -589,7 +1161,7 @@ export class VisualEditPanel {
         document.body.appendChild(this.host);
     }
 
-    show(el: HTMLElement, oid: string): void {
+    show(el: HTMLElement, oid: string, options: PanelShowOptions = {}): void {
         this.oid = oid;
         this.element = el;
         this.elementTag = el.tagName.toLowerCase();
@@ -601,6 +1173,11 @@ export class VisualEditPanel {
         // Snapshot the current DOM text so the bridge can locate the prop in
         // the parent component (e.g. label="First name" in ContactPage.tsx).
         this.originalText = this.currentText();
+        this.originalPlaceholder = this.currentPlaceholder();
+        this.forceScope = options.forceScope ?? null;
+        this.hideScopeControl = options.hideScopeControl ?? false;
+        this.editScope = this.forceScope ?? 'instance';
+        this.gradientEditorOpen = hasGradientClasses(el.className);
         // Reset modifier prefixes each time a new element is selected
         this.activeResponsive = '';
         this.activeState = '';
@@ -718,6 +1295,12 @@ export class VisualEditPanel {
     }
     isVisible(): boolean { return Boolean(this.shadow.querySelector('#panel')); }
 
+    setResponsivePrefix(prefix: string): void {
+        this.activeResponsive = prefix;
+        this.updatePrefixButtons();
+        this.syncActiveChips(this.pendingClasses);
+    }
+
     private currentText(): string {
         if (!this.element) return '';
         // Get direct text nodes only (not deeply nested)
@@ -732,12 +1315,22 @@ export class VisualEditPanel {
         return this.element?.getAttribute('placeholder') ?? '';
     }
 
+    private hasSharedOid(): boolean {
+        return document.querySelectorAll(`[data-oid="${this.oid.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`).length > 1;
+    }
+
+    private pushClassHistory(): void {
+        if (this.history[this.history.length - 1] !== this.pendingClasses) {
+            this.history.push(this.pendingClasses);
+        }
+    }
+
     private render(): void {
         const tag = this.elementTag || 'div';
         const style = document.createElement('style');
         style.textContent = CSS;
         const wrapper = document.createElement('div');
-        wrapper.innerHTML = buildPanel(this.oid, tag, this.pendingClasses, this.currentText(), this.currentPlaceholder());
+        wrapper.innerHTML = buildPanel(this.oid, tag, this.pendingClasses, this.currentText(), this.currentPlaceholder(), this.gradientEditorOpen, this.hideScopeControl);
         this.shadow.innerHTML = '';
         this.shadow.appendChild(style);
         this.shadow.appendChild(wrapper);
@@ -782,6 +1375,16 @@ export class VisualEditPanel {
             const cls = (swatch as HTMLElement).dataset.class ?? '';
             swatch.classList.toggle('active', set.has(cls) || (prefix !== '' && set.has(prefix + cls)));
         });
+        this.shadow.querySelectorAll<HTMLElement>('.color-picker').forEach(picker => {
+            const prefixName = picker.dataset.prefix ?? '';
+            const activeClass = Array.from(set).find(cls => {
+                const base = getBaseClass(cls);
+                return base.startsWith(`${prefixName}-`) && colorValueForClass(base);
+            });
+            const preview = picker.querySelector<HTMLElement>('.swatch-preview');
+            const value = activeClass ? colorValueForClass(activeClass) : null;
+            if (preview && value) preview.style.background = value;
+        });
 
         // Atualiza o textarea de classes
         const input = this.shadow.querySelector('#classes-input') as HTMLTextAreaElement | null;
@@ -806,6 +1409,7 @@ export class VisualEditPanel {
      *  @param ignorePrefix  When true (current-chip clicks) the active prefix is NOT prepended — cls is used verbatim.
      */
     private toggleClass(cls: string, ignorePrefix = false): void {
+        this.pushClassHistory();
         const prefix = ignorePrefix ? '' : this.activePrefix;
         const fullCls = prefix + cls;
         const parts = new Set(this.pendingClasses.split(/\s+/).filter(Boolean));
@@ -831,6 +1435,92 @@ export class VisualEditPanel {
         this.pendingClasses = Array.from(parts).join(' ');
         if (this.element) this.element.className = this.pendingClasses;
         this.syncActiveChips(this.pendingClasses);
+    }
+
+    private applyClassSet(classes: string, removePatterns: RegExp[]): void {
+        this.pushClassHistory();
+        const parts = new Set(this.pendingClasses.split(/\s+/).filter(Boolean));
+        for (const ex of Array.from(parts)) {
+            const base = ex.replace(/^(?:[a-z0-9-]+:)+/, '');
+            if (removePatterns.some(re => re.test(base))) parts.delete(ex);
+        }
+        for (const cls of classes.split(/\s+/).filter(Boolean)) {
+            const fullCls = this.activePrefix + cls;
+            parts.add(fullCls);
+            injectClassForPreview(fullCls);
+        }
+        this.pendingClasses = Array.from(parts).join(' ');
+        if (this.element) this.element.className = this.pendingClasses;
+        this.syncActiveChips(this.pendingClasses);
+    }
+
+    private clearClassesMatching(match: (baseClass: string) => boolean): void {
+        this.pushClassHistory();
+        const parts = new Set(this.pendingClasses.split(/\s+/).filter(Boolean));
+        for (const ex of Array.from(parts)) {
+            if (match(getBaseClass(ex))) parts.delete(ex);
+        }
+        this.pendingClasses = Array.from(parts).join(' ');
+        if (this.element) this.element.className = this.pendingClasses;
+        this.syncActiveChips(this.pendingClasses);
+    }
+
+    private applyGradientClassSet(classes: string): void {
+        const next = classes.split(/\s+/).filter(Boolean);
+        const currentBase = new Set(this.pendingClasses.split(/\s+/).filter(Boolean).map(getBaseClass));
+        const sameGradient = next.every(cls => currentBase.has(cls));
+        if (sameGradient) {
+            this.clearClassesMatching(isGradientClass);
+            return;
+        }
+        this.applyClassSet(classes, [GRADIENT_CLASS_RE, BG_COLOR_RE]);
+    }
+
+    private gradientPreviewClassName(classes: string): string {
+        const base = this.pendingClasses.split(/\s+/).filter(Boolean).filter(cls => {
+            const baseCls = getBaseClass(cls);
+            return !isGradientClass(baseCls) && !BG_COLOR_RE.test(baseCls);
+        });
+        return [...base, ...classes.split(/\s+/).filter(Boolean).map(cls => this.activePrefix + cls)].join(' ');
+    }
+
+    private previewGradientControls(): void {
+        const classes = this.readGradientControls();
+        injectClassesForPreview(classes.split(/\s+/).filter(Boolean).map(cls => this.activePrefix + cls).join(' '));
+        const output = this.shadow.querySelector('#grad-output');
+        if (output) output.textContent = classes;
+        if (this.element) this.element.className = this.gradientPreviewClassName(classes);
+    }
+
+    private readGradientControls(): string {
+        const value = (id: string) => (this.shadow.querySelector(`#${id}`) as HTMLInputElement | HTMLSelectElement | null)?.value ?? '';
+        const state = {
+            type: (value('grad-type') || 'linear') as 'linear' | 'radial' | 'conic',
+            direction: value('grad-direction') || 'r',
+            linearAngle: value('grad-linear-angle'),
+            radialPosition: value('grad-radial-position'),
+            conicAngle: value('grad-conic-angle'),
+            interpolation: value('grad-mode'),
+            fromColor: value('grad-from-color') || 'cyan-500',
+            viaColor: value('grad-via-color') || 'purple-500',
+            toColor: value('grad-to-color') || 'blue-600',
+            fromPos: value('grad-from-pos') || '0',
+            viaPos: value('grad-via-pos') || '50',
+            toPos: value('grad-to-pos') || '100',
+        };
+        return buildGradientClassSet(state);
+    }
+
+    private syncGradientControls(preview = true): void {
+        const type = (this.shadow.querySelector('#grad-type') as HTMLSelectElement | null)?.value ?? 'linear';
+        this.shadow.querySelectorAll<HTMLElement>('[data-grad-field]').forEach(field => {
+            field.style.display = field.dataset.gradField === type ? 'flex' : 'none';
+        });
+        if (preview) this.previewGradientControls();
+        else {
+            const output = this.shadow.querySelector('#grad-output');
+            if (output) output.textContent = this.readGradientControls();
+        }
     }
 
     /** Syncs the `.active` state of all modifier prefix buttons to the current selection. */
@@ -949,6 +1639,15 @@ export class VisualEditPanel {
             });
         });
 
+        this.shadow.querySelectorAll('.scope-btn[data-scope]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.editScope = ((btn as HTMLElement).dataset.scope as EditScope) ?? 'instance';
+                this.shadow.querySelectorAll('.scope-btn[data-scope]').forEach(scopeBtn => {
+                    scopeBtn.classList.toggle('active', (scopeBtn as HTMLElement).dataset.scope === this.editScope);
+                });
+            });
+        });
+
         // ── Modifier prefix buttons ───────────────────────────────────────
         this.shadow.querySelectorAll('.prefix-btn[data-prefix-type]').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -995,11 +1694,64 @@ export class VisualEditPanel {
         });
 
         // Swatches
+        this.shadow.querySelectorAll('.color-picker-trigger').forEach(trigger => {
+            trigger.addEventListener('click', () => {
+                const picker = (trigger as HTMLElement).closest('.color-picker');
+                if (!picker) return;
+                const popover = picker.querySelector('.color-popover');
+                const willOpen = popover?.classList.contains('hidden') ?? false;
+                this.shadow.querySelectorAll('.color-popover').forEach(el => el.classList.add('hidden'));
+                if (willOpen) popover?.classList.remove('hidden');
+            });
+        });
+
         this.shadow.querySelectorAll('.swatch').forEach(swatch => {
             swatch.addEventListener('click', () => {
                 const cls = (swatch as HTMLElement).dataset.class ?? '';
-                if (cls) this.toggleClass(cls);
+                if (!cls) return;
+                if (cls.startsWith('bg-')) {
+                    this.applyClassSet(cls, [GRADIENT_CLASS_RE, BG_COLOR_RE]);
+                    this.gradientEditorOpen = false;
+                    this.render();
+                } else {
+                    this.toggleClass(cls);
+                }
+                (swatch as HTMLElement).closest('.color-popover')?.classList.add('hidden');
             });
+        });
+
+        this.shadow.querySelectorAll('.gradient-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                const classSet = (chip as HTMLElement).dataset.classes ?? '';
+                if (!classSet) return;
+                this.gradientEditorOpen = true;
+                this.applyGradientClassSet(classSet);
+                this.gradientEditorOpen = hasGradientClasses(this.pendingClasses);
+                this.render();
+            });
+        });
+
+        this.shadow.querySelector('#grad-open-btn')?.addEventListener('click', () => {
+            this.gradientEditorOpen = true;
+            this.render();
+        });
+
+        this.shadow.querySelectorAll('#grad-type,#grad-mode,#grad-direction,#grad-linear-angle,#grad-radial-position,#grad-conic-angle,#grad-from-color,#grad-via-color,#grad-to-color,#grad-from-pos,#grad-via-pos,#grad-to-pos').forEach(control => {
+            control.addEventListener('input', () => this.syncGradientControls());
+            control.addEventListener('change', () => this.syncGradientControls());
+        });
+        if (this.shadow.querySelector('#grad-type')) this.syncGradientControls(false);
+
+        this.shadow.querySelector('#grad-apply-btn')?.addEventListener('click', () => {
+            this.gradientEditorOpen = true;
+            this.applyGradientClassSet(this.readGradientControls());
+            this.gradientEditorOpen = hasGradientClasses(this.pendingClasses);
+        });
+
+        this.shadow.querySelector('#grad-clear-btn')?.addEventListener('click', () => {
+            this.clearClassesMatching(isGradientClass);
+            this.gradientEditorOpen = false;
+            this.render();
         });
 
         // Class textarea manual edit
@@ -1043,20 +1795,22 @@ export class VisualEditPanel {
                 const others = ALL_CLASSES.filter(c => !active.has(c) && !relevant.includes(c)).slice(0, 4);
                 matches = [...elementOnly, ...relevant, ...others];
             } else {
-                // Ranking: exact(100) > active exact(95) > starts-with relevant(60) > starts-with(50) > contains relevant(30) > contains(10)
+                // Ranking: exact > active/relevant > category match > contains.
                 type Scored = { c: string; score: number };
                 const scored: Scored[] = [];
                 // Element's own active classes
                 for (const c of elementClasses) {
-                    if (!c.includes(q)) continue;
-                    scored.push({ c, score: c === q ? 95 : c.startsWith(q) ? 70 : 40 });
+                    const categoryMatch = categoryMatchesQuery(c, q);
+                    if (!c.includes(q) && !categoryMatch) continue;
+                    scored.push({ c, score: c === q ? 95 : c.startsWith(q) ? 70 : categoryMatch ? 55 : 40 });
                 }
                 // ALL_CLASSES
                 for (const c of ALL_CLASSES) {
-                    if (!c.includes(q)) continue;
+                    const categoryMatch = categoryMatchesQuery(c, q);
+                    if (!c.includes(q) && !categoryMatch) continue;
                     if (active.has(c)) continue; // already in element, handled above
                     const isRelevant = relevantPrefixes.some(p => c.startsWith(p));
-                    let score = c === q ? 100 : c.startsWith(q) ? (isRelevant ? 60 : 50) : (isRelevant ? 30 : 10);
+                    let score = c === q ? 100 : c.startsWith(q) ? (isRelevant ? 60 : 50) : categoryMatch ? (isRelevant ? 45 : 35) : (isRelevant ? 30 : 10);
                     scored.push({ c, score });
                 }
                 scored.sort((a, b) => b.score - a.score);
@@ -1065,12 +1819,22 @@ export class VisualEditPanel {
 
             if (!matches.length) { suggBox.style.display = 'none'; return; }
 
-            suggBox.innerHTML = matches.map(c =>
-                `<div class="suggestion${active.has(c) ? ' active-cls' : ''}" data-class="${c}">
-                   <span>${c}</span>
-                   ${active.has(c) ? '<span class="suggestion-badge">ativo</span>' : ''}
-                 </div>`
-            ).join('');
+            const groups = new Map<string, string[]>();
+            for (const c of matches) {
+                const group = classCategory(c);
+                groups.set(group, [...(groups.get(group) ?? []), c]);
+            }
+
+            suggBox.innerHTML = Array.from(groups.entries()).map(([group, items]) => `
+                <div class="suggestion-group">${escapeHtml(group)}</div>
+                ${items.map(c => {
+                    const escaped = escapeHtml(c);
+                    return `<div class="suggestion${active.has(c) ? ' active-cls' : ''}" data-class="${escaped}" title="${escapeHtml(classTooltip(c))}">
+                       <span>${escaped}</span>
+                       ${active.has(c) ? '<span class="suggestion-badge">ativo</span>' : ''}
+                     </div>`;
+                }).join('')}
+            `).join('');
             suggBox.style.display = 'block';
 
             // Hover preview + click
@@ -1078,8 +1842,9 @@ export class VisualEditPanel {
                 item.addEventListener('mouseenter', () => {
                     const cls = (item as HTMLElement).dataset.class ?? '';
                     if (this.element && cls && !active.has(cls)) {
-                        injectClassForPreview(cls);
-                        this.element.className = this.pendingClasses + ' ' + cls;
+                        const fullCls = this.activePrefix + cls;
+                        injectClassForPreview(fullCls);
+                        this.element.className = this.pendingClasses + ' ' + fullCls;
                     }
                 });
                 item.addEventListener('mouseleave', () => {
@@ -1096,10 +1861,83 @@ export class VisualEditPanel {
             });
         };
 
-        searchInput?.addEventListener('focus', () => showSuggestions(searchInput.value.trim().toLowerCase()));
+        const renderCategoryAccordion = () => {
+            const active = new Set(this.pendingClasses.split(/\s+/).filter(Boolean));
+            const groups = CLASS_CATEGORIES.map(category => ({
+                name: category.name,
+                items: ALL_CLASSES.filter(c => category.match(getBaseClass(c))),
+            })).filter(group => group.items.length > 0);
+
+            suggBox.innerHTML = groups.map(group => `
+                <button class="suggestion-category" type="button" data-category="${escapeHtml(group.name)}">
+                  <span>${escapeHtml(group.name)}</span>
+                  <span class="suggestion-category-count">${group.items.length}</span>
+                </button>
+                <div class="suggestion-category-items" data-category-items="${escapeHtml(group.name)}">
+                  ${group.items.map(c => {
+                      const escaped = escapeHtml(c);
+                      return `<div class="suggestion${active.has(c) ? ' active-cls' : ''}" data-class="${escaped}" title="${escapeHtml(classTooltip(c))}">
+                        <span>${escaped}</span>
+                        ${active.has(c) ? '<span class="suggestion-badge">ativo</span>' : ''}
+                      </div>`;
+                  }).join('')}
+                </div>
+            `).join('');
+            suggBox.style.display = 'block';
+
+            suggBox.querySelectorAll('.suggestion-category').forEach(btn => {
+                btn.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                });
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const items = (btn as HTMLElement).nextElementSibling;
+                    items?.classList.toggle('open');
+                    suggBox.style.display = 'block';
+                });
+            });
+
+            suggBox.querySelectorAll('.suggestion').forEach(item => {
+                item.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                });
+                item.addEventListener('mouseenter', () => {
+                    const cls = (item as HTMLElement).dataset.class ?? '';
+                    if (this.element && cls && !active.has(cls)) {
+                        const fullCls = this.activePrefix + cls;
+                        injectClassForPreview(fullCls);
+                        this.element.className = this.pendingClasses + ' ' + fullCls;
+                    }
+                });
+                item.addEventListener('mouseleave', () => {
+                    if (this.element) this.element.className = this.pendingClasses;
+                });
+                item.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const cls = (item as HTMLElement).dataset.class ?? '';
+                    if (cls) {
+                        this.toggleClass(cls);
+                        searchInput.value = '';
+                        suggBox.style.display = 'none';
+                    }
+                });
+            });
+        };
+
+        searchInput?.addEventListener('focus', () => {
+            const q = searchInput.value.trim().toLowerCase();
+            if (q) showSuggestions(q);
+            else renderCategoryAccordion();
+        });
 
         searchInput?.addEventListener('input', () => {
-            showSuggestions(searchInput.value.trim().toLowerCase());
+            const q = searchInput.value.trim().toLowerCase();
+            if (q) showSuggestions(q);
+            else renderCategoryAccordion();
         });
 
         searchInput?.addEventListener('keydown', e => {
@@ -1116,6 +1954,9 @@ export class VisualEditPanel {
         panelEl?.addEventListener('pointerdown', (e: Event) => {
             if (!(e.target as HTMLElement).closest('.search-wrap')) {
                 suggBox.style.display = 'none';
+            }
+            if (!(e.target as HTMLElement).closest('.color-picker')) {
+                this.shadow.querySelectorAll('.color-popover').forEach(el => el.classList.add('hidden'));
             }
         }, { capture: false });
 
@@ -1138,10 +1979,11 @@ export class VisualEditPanel {
             if (!textInput) return;
             textApplyBtn.disabled = true;
             textApplyBtn.textContent = '…';
-            const ok = await this.callbacks.onTextApply(this.oid, textInput.value, this.originalText);
+            const result = await this.callbacks.onTextApply(this.oid, textInput.value, this.originalText, this.editScope);
             textApplyBtn.disabled = false;
             textApplyBtn.textContent = '✓ Salvar texto';
-            this.showToast(ok ? 'Texto salvo ✓' : 'Bridge offline?', ok ? 'success' : 'error');
+            if (result.ok) this.originalText = textInput.value;
+            this.showToast(result.ok ? 'Texto salvo ✓' : result.error ?? 'Erro ao salvar texto', result.ok ? 'success' : 'error');
         });
 
         // ── Placeholder apply ─────────────────────────────────────────────
@@ -1157,10 +1999,11 @@ export class VisualEditPanel {
             if (!placeholderInput) return;
             placeholderBtn.disabled = true;
             placeholderBtn.textContent = '…';
-            const ok = await this.callbacks.onAttrApply(this.oid, 'placeholder', placeholderInput.value, this.currentPlaceholder());
+            const result = await this.callbacks.onAttrApply(this.oid, 'placeholder', placeholderInput.value, this.originalPlaceholder, this.editScope);
+            if (result.ok) this.originalPlaceholder = placeholderInput.value;
             placeholderBtn.disabled = false;
             placeholderBtn.textContent = '✓ Salvar placeholder';
-            this.showToast(ok ? 'Placeholder salvo ✓' : 'Bridge offline?', ok ? 'success' : 'error');
+            this.showToast(result.ok ? 'Placeholder salvo ✓' : result.error ?? 'Erro ao salvar placeholder', result.ok ? 'success' : 'error');
         });
 
         // ── Class apply ───────────────────────────────────────────────────
@@ -1168,15 +2011,14 @@ export class VisualEditPanel {
         applyBtn?.addEventListener('click', async () => {
             applyBtn.disabled = true;
             applyBtn.textContent = '…';
-            const ok = await this.callbacks.onApply(this.oid, this.pendingClasses);
+            const result = await this.callbacks.onApply(this.oid, this.pendingClasses, this.editScope);
             applyBtn.disabled = false;
             applyBtn.textContent = '✓ Aplicar classes';
-            if (ok) {
-                this.history.push(this.originalClasses);
+            if (result.ok) {
                 this.originalClasses = this.pendingClasses;
                 this.showToast('Classes salvas ✓', 'success');
             } else {
-                this.showToast('Erro — bridge offline?', 'error');
+                this.showToast(result.error ?? 'Erro ao salvar classes', 'error');
             }
         });
 
@@ -1185,14 +2027,19 @@ export class VisualEditPanel {
         undoBtn?.addEventListener('click', async () => {
             const prev = this.history.pop();
             if (!prev) { this.showToast('Nada para desfazer', 'error'); return; }
-            const ok = await this.callbacks.onApply(this.oid, prev);
-            if (ok) {
-                this.pendingClasses = prev;
-                this.originalClasses = prev;
-                if (this.element) this.element.className = prev;
-                this.syncActiveChips(prev);
-                this.showToast('Desfeito ✓', 'success');
+            const shouldPersistUndo = this.originalClasses === this.pendingClasses;
+            this.pendingClasses = prev;
+            if (this.element) this.element.className = prev;
+            this.syncActiveChips(prev);
+
+            if (!shouldPersistUndo) {
+                this.showToast('Preview desfeito ✓', 'success');
+                return;
             }
+
+            const result = await this.callbacks.onApply(this.oid, prev, this.editScope);
+            if (result.ok) this.originalClasses = prev;
+            this.showToast(result.ok ? 'Desfeito ✓' : result.error ?? 'Erro ao desfazer', result.ok ? 'success' : 'error');
         });
     }
 

@@ -1,4 +1,4 @@
-import { VisualEditPanel } from './panel';
+import { VisualEditPanel, type EditResponse } from './panel';
 import { VisualEditToolbar } from './toolbar';
 import { LayerPanel } from './layer-panel';
 import { ThemePanel } from './theme-panel';
@@ -6,6 +6,7 @@ import { ComponentsPanel } from './components-panel';
 
 const BRIDGE = 'http://localhost:5179';
 const OID_ATTR = 'data-oid';
+const COMPONENT_PREVIEW_PATH_PREFIX = '/visual-edit-kit-component-preview/';
 
 let enabled = false;
 let selectedEl: HTMLElement | null = null;
@@ -16,6 +17,12 @@ let layerPanel: LayerPanel | null = null;
 let themePanel: ThemePanel | null = null;
 let componentsPanel: ComponentsPanel | null = null;
 let outlineStyle: HTMLStyleElement | null = null;
+let hoverEl: HTMLElement | null = null;
+let hoverOverlay: HTMLElement | null = null;
+let componentOverlays: HTMLElement[] = [];
+let overlayFrame = 0;
+let responsiveStyle: HTMLStyleElement | null = null;
+let responsivePrefix = '';
 
 /* ── Overlay ── */
 function getOrCreateOverlay(): HTMLElement {
@@ -51,6 +58,171 @@ function hideOverlay(): void {
     if (overlay) overlay.style.display = 'none';
 }
 
+function getOrCreateHoverOverlay(): HTMLElement {
+    if (hoverOverlay) return hoverOverlay;
+    hoverOverlay = document.createElement('div');
+    Object.assign(hoverOverlay.style, {
+        position: 'fixed',
+        pointerEvents: 'none',
+        zIndex: '2147483644',
+        border: '1px dashed rgba(20,184,166,.8)',
+        borderRadius: '3px',
+        background: 'rgba(20,184,166,.06)',
+        boxSizing: 'border-box',
+        transition: 'all .06s ease',
+        display: 'none',
+    });
+    document.body.appendChild(hoverOverlay);
+    return hoverOverlay;
+}
+
+function moveHoverOverlay(el: HTMLElement): void {
+    const ov = getOrCreateHoverOverlay();
+    const r = el.getBoundingClientRect();
+    Object.assign(ov.style, {
+        top: `${r.top}px`,
+        left: `${r.left}px`,
+        width: `${r.width}px`,
+        height: `${r.height}px`,
+        display: 'block',
+    });
+}
+
+function hideHoverOverlay(): void {
+    hoverEl = null;
+    if (hoverOverlay) hoverOverlay.style.display = 'none';
+}
+
+function updateActiveOverlays(): void {
+    overlayFrame = 0;
+    if (selectedEl?.isConnected) {
+        moveOverlay(selectedEl);
+    } else if (selectedEl) {
+        deselect();
+    }
+
+    if (hoverEl?.isConnected) {
+        moveHoverOverlay(hoverEl);
+    } else if (hoverEl) {
+        hideHoverOverlay();
+    }
+
+    for (const marker of componentOverlays) {
+        const anchor = (marker as HTMLElement & { __veAnchor?: HTMLElement }).__veAnchor;
+        if (!anchor?.isConnected) {
+            marker.style.display = 'none';
+            continue;
+        }
+        const r = anchor.getBoundingClientRect();
+        Object.assign(marker.style, {
+            top: `${r.top}px`,
+            left: `${r.left}px`,
+            width: `${r.width}px`,
+            height: `${r.height}px`,
+            display: 'block',
+        });
+    }
+}
+
+function scheduleOverlayUpdate(): void {
+    if (!enabled || overlayFrame) return;
+    overlayFrame = requestAnimationFrame(updateActiveOverlays);
+}
+
+function clearComponentOverlays(): void {
+    componentOverlays.forEach(el => el.remove());
+    componentOverlays = [];
+}
+
+function showTreeHover(el: HTMLElement | null): void {
+    hoverEl = el;
+    if (el) moveHoverOverlay(el);
+    else hideHoverOverlay();
+}
+
+function setResponsivePreview(prefix: string, width: number | null): void {
+    responsivePrefix = prefix;
+    panel?.setResponsivePrefix(prefix);
+    if (prefix) document.documentElement.setAttribute('data-ve-responsive-prefix', prefix);
+    else document.documentElement.removeAttribute('data-ve-responsive-prefix');
+
+    if (!responsiveStyle) {
+        responsiveStyle = document.createElement('style');
+        responsiveStyle.id = 've-responsive-preview';
+        document.head.appendChild(responsiveStyle);
+    }
+
+    if (!width) {
+        document.documentElement.removeAttribute('data-ve-responsive-preview');
+        responsiveStyle.textContent = '';
+        scheduleOverlayUpdate();
+        return;
+    }
+
+    document.documentElement.setAttribute('data-ve-responsive-preview', String(width));
+    responsiveStyle.textContent = `
+      html[data-ve-responsive-preview] body {
+        width: ${width}px !important;
+        max-width: ${width}px !important;
+        min-height: 100vh !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        box-shadow: 0 0 0 1px rgba(99,102,241,.28), 0 24px 80px rgba(0,0,0,.18) !important;
+      }
+      html[data-ve-responsive-preview] {
+        background: #f6f6f7 !important;
+      }
+    `;
+    scheduleOverlayUpdate();
+}
+
+function showComponentOverlays(elements: HTMLElement[]): void {
+    clearComponentOverlays();
+    componentOverlays = elements.map((el, index) => {
+        const marker = document.createElement('div') as HTMLElement & { __veAnchor?: HTMLElement };
+        marker.__veAnchor = el;
+        Object.assign(marker.style, {
+            position: 'fixed',
+            pointerEvents: 'none',
+            zIndex: '2147483645',
+            border: '2px solid #14b8a6',
+            borderRadius: '3px',
+            background: 'rgba(20,184,166,.10)',
+            boxSizing: 'border-box',
+            transition: 'all .08s ease',
+        });
+        if (index === 0) {
+            marker.style.borderColor = '#6366f1';
+            marker.style.background = 'rgba(99,102,241,.10)';
+        }
+        document.body.appendChild(marker);
+        return marker;
+    });
+    updateActiveOverlays();
+}
+
+function elementsForOids(oids: string[]): HTMLElement[] {
+    const seen = new Set<HTMLElement>();
+    const elements: HTMLElement[] = [];
+    for (const oid of oids) {
+        document.querySelectorAll<HTMLElement>(`[${OID_ATTR}="${oid.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`).forEach(el => {
+            if (!seen.has(el)) {
+                seen.add(el);
+                elements.push(el);
+            }
+        });
+    }
+    const set = new Set(elements);
+    return elements.filter(el => {
+        let parent = el.parentElement;
+        while (parent) {
+            if (set.has(parent)) return false;
+            parent = parent.parentElement;
+        }
+        return true;
+    });
+}
+
 /* ── Element outline toggle ── */
 function setOutline(active: boolean): void {
     if (active) {
@@ -80,31 +252,51 @@ function getOidTarget(el: EventTarget | null): HTMLElement | null {
 }
 
 /* ── Bridge calls ── */
-async function bridgeEdit(oid: string, kind: string, payload: string, currentText?: string): Promise<boolean> {
+function selectedInstanceInfo(oid: string): { instanceIndex: number; instanceCount: number; ancestorOids: string[] } {
+    const all = Array.from(document.querySelectorAll<HTMLElement>(`[${OID_ATTR}="${oid.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`));
+    const ancestorOids: string[] = [];
+    let parent = selectedEl?.parentElement ?? null;
+    while (parent) {
+        const ancestorOid = parent.getAttribute(OID_ATTR);
+        if (ancestorOid && ancestorOid !== oid && !ancestorOids.includes(ancestorOid)) {
+            ancestorOids.push(ancestorOid);
+        }
+        parent = parent.parentElement;
+    }
+    return {
+        instanceIndex: Math.max(0, selectedEl ? all.indexOf(selectedEl) : 0),
+        instanceCount: all.length,
+        ancestorOids,
+    };
+}
+
+async function bridgeEdit(oid: string, kind: string, payload: string, currentText?: string, scope?: 'instance' | 'component'): Promise<EditResponse> {
     try {
+        const instance = selectedInstanceInfo(oid);
         const res = await fetch(`${BRIDGE}/edit`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ oid, kind, payload, currentText }),
+            body: JSON.stringify({ oid, kind, payload, currentText, scope, ...instance }),
         });
         const data = await res.json();
-        return data.ok === true;
+        return { ok: data.ok === true, error: data.error };
     } catch {
-        return false;
+        return { ok: false, error: 'Bridge offline?' };
     }
 }
 
-async function bridgeEditAttr(oid: string, propName: string, payload: string, currentText: string): Promise<boolean> {
+async function bridgeEditAttr(oid: string, propName: string, payload: string, currentText: string, scope?: 'instance' | 'component'): Promise<EditResponse> {
     try {
+        const instance = selectedInstanceInfo(oid);
         const res = await fetch(`${BRIDGE}/edit`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ oid, kind: 'attr', propName, payload, currentText }),
+            body: JSON.stringify({ oid, kind: 'attr', propName, payload, currentText, scope, ...instance }),
         });
         const data = await res.json();
-        return data.ok === true;
+        return { ok: data.ok === true, error: data.error };
     } catch {
-        return false;
+        return { ok: false, error: 'Bridge offline?' };
     }
 }
 
@@ -125,8 +317,8 @@ function startTextEdit(el: HTMLElement): void {
 
         const newText = el.textContent ?? '';
         if (save && newText !== originalText) {
-            const ok = await bridgeEdit(oid, 'text', newText);
-            showPageToast(ok ? `Texto salvo ✓` : 'Erro ao salvar. Bridge offline?', ok ? 'success' : 'error');
+            const result = await bridgeEdit(oid, 'text', newText, originalText, 'instance');
+            showPageToast(result.ok ? `Texto salvo ✓` : result.error ?? 'Erro ao salvar texto', result.ok ? 'success' : 'error');
         } else if (!save) {
             el.textContent = originalText;
         }
@@ -216,7 +408,7 @@ function onClick(e: MouseEvent): void {
     // Ignore the click that fires at the end of a panel drag — the pointer was
     // released outside the shadow host, so isInsidePanel() would be false, but
     // the user was just repositioning the panel, not selecting a new element.
-    if (VisualEditPanel.dragging) return;
+    if (VisualEditPanel.dragging || VisualEditToolbar.dragging) return;
     if (isInsidePanel(e)) return;
 
     // Previne navegação e outros handlers da página para TODOS os cliques
@@ -231,8 +423,7 @@ function onClick(e: MouseEvent): void {
     }
 
     if (selectedEl === target) return; // already selected
-    selectedEl = target;
-    moveOverlay(target);
+    clearComponentOverlays();
 
     const oid = target.getAttribute(OID_ATTR)!;
 
@@ -247,23 +438,7 @@ function onClick(e: MouseEvent): void {
         );
     }
 
-    if (!panel) {
-        panel = new VisualEditPanel({
-            onApply: async (oid, classes) => {
-                return bridgeEdit(oid, 'class', classes);
-            },
-            onTextApply: async (oid, text, originalText) => {
-                return bridgeEdit(oid, 'text', text, originalText);
-            },
-            onAttrApply: async (oid, attrName, newValue, currentValue) => {
-                return bridgeEditAttr(oid, attrName, newValue, currentValue);
-            },
-            onClose: deselect,
-        });
-    }
-    panel.show(target, oid);
-    // Sync layer panel highlight when an element is selected via click
-    layerPanel?.setSelected(oid);
+    selectElement(target, oid);
 }
 
 function onDblClick(e: MouseEvent): void {
@@ -288,8 +463,26 @@ function onKeyDown(e: KeyboardEvent): void {
 function deselect(): void {
     selectedEl = null;
     hideOverlay();
+    clearComponentOverlays();
     document.body.style.cursor = '';
     panel?.hide();
+}
+
+function selectElement(el: HTMLElement, oid: string): void {
+    selectedEl = el;
+    moveOverlay(el);
+    if (!panel) {
+        panel = new VisualEditPanel({
+            onApply: async (o, classes, scope) => bridgeEdit(o, 'class', classes, undefined, scope),
+            onTextApply: async (o, text, orig, scope) => bridgeEdit(o, 'text', text, orig, scope),
+            onAttrApply: async (o, attr, val, cur, scope) => bridgeEditAttr(o, attr, val, cur, scope),
+            onClose: deselect,
+        });
+    }
+    const isComponentPreview = window.location.pathname.startsWith(COMPONENT_PREVIEW_PATH_PREFIX);
+    panel.show(el, oid, isComponentPreview ? { forceScope: 'component', hideScopeControl: true } : {});
+    panel.setResponsivePrefix(responsivePrefix);
+    layerPanel?.setSelected(oid);
 }
 
 /* ── Enable / disable ── */
@@ -300,6 +493,8 @@ function enable(): void {
     document.addEventListener('click', onClick, true);
     document.addEventListener('dblclick', onDblClick, true);
     document.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('scroll', scheduleOverlayUpdate, true);
+    window.addEventListener('resize', scheduleOverlayUpdate, true);
 
     // Create mini toolbar
     toolbar = new VisualEditToolbar({
@@ -322,23 +517,44 @@ function enable(): void {
                 layerPanel = new LayerPanel({
                     onSelect: (el, oid) => {
                         // Select the element as if the user clicked it
-                        selectedEl = el;
-                        moveOverlay(el);
-                        if (!panel) {
-                            panel = new VisualEditPanel({
-                                onApply: async (o, classes) => bridgeEdit(o, 'class', classes),
-                                onTextApply: async (o, text, orig) => bridgeEdit(o, 'text', text, orig),
-                                onAttrApply: async (o, attr, val, cur) => bridgeEditAttr(o, attr, val, cur),
-                                onClose: deselect,
-                            });
-                        }
-                        panel.show(el, oid);
+                        clearComponentOverlays();
+                        selectElement(el, oid);
                     },
+                    onHover: (el) => showTreeHover(el),
                 });
                 toolbar?.setTreeActive(true);
             }
         },
+        onComponents: () => {
+            if (componentsPanel) {
+                componentsPanel.destroy();
+                componentsPanel = null;
+                toolbar?.setComponentsActive(false);
+            } else {
+                componentsPanel = new ComponentsPanel({
+                    onEditInstances: (oids, componentName) => {
+                        const elements = elementsForOids(oids);
+                        const first = elements[0];
+                        if (!first) {
+                            showPageToast('Nenhuma instância desse componente nesta página', 'error');
+                            return;
+                        }
+                        first.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+                        showComponentOverlays(elements);
+                        selectElement(first, first.getAttribute(OID_ATTR) ?? '');
+                        showPageToast(`${componentName}: ${elements.length} instância(s) na página`, 'success');
+                    },
+                    onOpenPreview: (path, componentName) => {
+                        const url = new URL(path, window.location.origin);
+                        window.open(url.toString(), '_blank', 'noopener,noreferrer');
+                        showPageToast(`${componentName}: preview aberto no browser`, 'success');
+                    },
+                });
+                toolbar?.setComponentsActive(true);
+            }
+        },
         onOutline: (active) => setOutline(active),
+        onBreakpoint: (prefix, width) => setResponsivePreview(prefix, width),
         onDisable: () => {
             chrome.storage.local.set({ enabled: false });
             disable();
@@ -355,13 +571,24 @@ function disable(): void {
     document.removeEventListener('click', onClick, true);
     document.removeEventListener('dblclick', onDblClick, true);
     document.removeEventListener('keydown', onKeyDown, true);
+    window.removeEventListener('scroll', scheduleOverlayUpdate, true);
+    window.removeEventListener('resize', scheduleOverlayUpdate, true);
+    if (overlayFrame) cancelAnimationFrame(overlayFrame);
+    overlayFrame = 0;
     deselect();
+    hideHoverOverlay();
+    hoverOverlay?.remove();
+    hoverOverlay = null;
 
     // Destroy extra panels + toolbar
     toolbar?.destroy();   toolbar = null;
     layerPanel?.destroy(); layerPanel = null;
     themePanel?.destroy(); themePanel = null;
+    componentsPanel?.destroy(); componentsPanel = null;
     setOutline(false);
+    setResponsivePreview('', null);
+    responsiveStyle?.remove();
+    responsiveStyle = null;
 
     showPageToast('Visual Edit desativado', 'error');
 }

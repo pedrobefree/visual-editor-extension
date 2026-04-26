@@ -12,6 +12,7 @@ export interface ThemeColor {
 export interface ThemeFont {
     name: string;
     value: string;
+    displayValue?: string;
     variable?: string;
     filePath?: string;
 }
@@ -57,6 +58,33 @@ function toHex(value: string): string | null {
     if (m) return rgbToHex(parseFloat(m[1]!), parseFloat(m[2]!), parseFloat(m[3]!));
 
     return null; // hsl, oklch, lch, calc() — can't trivially convert
+}
+
+function displayFontValue(raw: string): string {
+    const value = raw.trim();
+    const varFallback = value.match(/^var\([^,]+,\s*(['"]?)([^'",)]+)\1\)/);
+    if (varFallback?.[2]) return varFallback[2].trim();
+
+    let current = '';
+    let quote: string | null = null;
+    let depth = 0;
+    for (const ch of value) {
+        if (quote) {
+            if (ch === quote) quote = null;
+            current += ch;
+            continue;
+        }
+        if (ch === '"' || ch === "'") {
+            quote = ch;
+            current += ch;
+            continue;
+        }
+        if (ch === '(') depth++;
+        if (ch === ')') depth = Math.max(0, depth - 1);
+        if (ch === ',' && depth === 0) break;
+        current += ch;
+    }
+    return current.trim().replace(/^['"]|['"]$/g, '');
 }
 
 /* ── File discovery ───────────────────────────────────────────────────────── */
@@ -139,10 +167,10 @@ function parseBlocks(blocks: string[], filePath: string): { colors: ThemeColor[]
             if (/font/i.test(varName)) {
                 // Skip if the value looks like spacing/calc
                 if (/^calc|^var\(--spacing/.test(raw)) continue;
-                const value = raw.replace(/^['"]|['"]$/g, '').split(',')[0]!.trim();
+                const value = displayFontValue(raw);
                 if (!value) continue;
                 const friendlyName = varName.replace(/^font-?/, '') || varName;
-                fonts.push({ name: friendlyName, value: raw, variable: `--${varName}`, filePath });
+                fonts.push({ name: friendlyName, value: raw, displayValue: value, variable: `--${varName}`, filePath });
             }
         }
     }

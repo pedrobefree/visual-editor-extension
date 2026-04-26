@@ -10,6 +10,7 @@ import {
 } from './i18n';
 import { readTheme, writeTheme, type ThemeUpdate } from './theme';
 import { listComponents } from './components';
+import { writeComponentPreview, type ComponentPreviewRequest } from './preview';
 import { watch } from 'chokidar';
 
 const PORT = 5179;
@@ -81,16 +82,28 @@ export function startServer(projectRoot: string): void {
             return c.json({ ok: false, error: `OID not found in index: ${body.oid}` }, 404);
         }
 
+        if (body.ancestorOids?.length) {
+            const hints: string[] = [];
+            for (const ancestorOid of body.ancestorOids) {
+                const ancestorLoc = index.get(ancestorOid);
+                if (!ancestorLoc) continue;
+                if (ancestorLoc.filePath === loc.filePath) continue;
+                if (!hints.includes(ancestorLoc.filePath)) hints.push(ancestorLoc.filePath);
+            }
+            body.sourceFileHints = hints;
+        }
+
         const result = applyEdit(loc, body, projectRoot);
 
-        // Refresh index after edit
-        refreshFile(loc.filePath, index);
+        // Refresh index after edit. Instance edits can modify the parent usage
+        // file rather than the OID template file.
+        refreshFile(result.filePath ?? loc.filePath, index);
 
         if (!result.ok) {
             return c.json(result, 500);
         }
 
-        const relPath = loc.filePath.replace(projectRoot + '/', '');
+        const relPath = (result.filePath ?? loc.filePath).replace(projectRoot + '/', '');
         console.log(`[visual-edit] ${body.kind} edit → ${relPath} (oid=${body.oid})`);
 
         return c.json({ ok: true, filePath: relPath });
@@ -150,6 +163,18 @@ export function startServer(projectRoot: string): void {
     app.get('/components', (c) => {
         const components = listComponents(projectRoot);
         return c.json({ ok: true, components });
+    });
+
+    /** POST /component-preview { filePath, name } — writes a local app route for browser editing */
+    app.post('/component-preview', async (c) => {
+        let body: ComponentPreviewRequest;
+        try { body = await c.req.json<ComponentPreviewRequest>(); } catch {
+            return c.json({ ok: false, error: 'Invalid JSON' }, 400);
+        }
+        const result = writeComponentPreview(projectRoot, body);
+        if (!result.ok) return c.json(result, 500);
+        console.log(`[visual-edit] component preview → ${body.name} (${body.filePath.replace(projectRoot + '/', '')})`);
+        return c.json(result);
     });
 
     /** POST /open-file { filePath, line? } — opens file in VS Code */

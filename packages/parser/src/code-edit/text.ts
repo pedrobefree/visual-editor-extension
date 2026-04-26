@@ -51,3 +51,7 @@ export function updateNodeTextContent(node: T.JSXElement, textContent: string): 
         }
     });
 }
+
+export function setNodeTextToIdentifier(node: T.JSXElement, identifier: string): void {
+    node.children = [t.jsxExpressionContainer(t.identifier(identifier))];
+}

@@ -163,3 +163,177 @@ export function updatePropValues(
 
     return changed;
 }
+
+export function updatePropValueAtIndex(
+    ast: T.File,
+    componentNames: string[],
+    propName: string,
+    oldValue: string | undefined,
+    newValue: string,
+    matchIndex: number,
+): boolean {
+    let seen = 0;
+    let changed = false;
+    const nameSet = new Set(componentNames);
+
+    traverse(ast, {
+        JSXOpeningElement(path) {
+            if (changed) return;
+            const nameNode = path.node.name;
+            if (!t.isJSXIdentifier(nameNode)) return;
+            if (!nameSet.has(nameNode.name)) return;
+
+            const matchingAttr = path.node.attributes.find(attr =>
+                t.isJSXAttribute(attr) &&
+                t.isJSXIdentifier(attr.name) &&
+                attr.name.name === propName &&
+                t.isStringLiteral(attr.value),
+            ) as T.JSXAttribute | undefined;
+            if (!matchingAttr || !t.isStringLiteral(matchingAttr.value)) return;
+
+            if (seen !== matchIndex) {
+                seen += 1;
+                return;
+            }
+
+            if (oldValue !== undefined && matchingAttr.value.value !== oldValue) return;
+
+            matchingAttr.value.value = newValue;
+            if (matchingAttr.value.extra) {
+                (matchingAttr.value.extra as Record<string, unknown>).rawValue = newValue;
+                (matchingAttr.value.extra as Record<string, unknown>).raw = `"${newValue}"`;
+            }
+            changed = true;
+            path.stop();
+        },
+    });
+
+    return changed;
+}
+
+export function updatePropValueMatchingAtIndex(
+    ast: T.File,
+    componentNames: string[],
+    propName: string,
+    oldValue: string,
+    newValue: string,
+    matchIndex: number,
+): boolean {
+    let seen = 0;
+    let changed = false;
+    const nameSet = new Set(componentNames);
+
+    traverse(ast, {
+        JSXOpeningElement(path) {
+            if (changed) return;
+            const nameNode = path.node.name;
+            if (!t.isJSXIdentifier(nameNode)) return;
+            if (!nameSet.has(nameNode.name)) return;
+
+            for (const attr of path.node.attributes) {
+                if (!t.isJSXAttribute(attr)) continue;
+                if (!t.isJSXIdentifier(attr.name) || attr.name.name !== propName) continue;
+                if (!t.isStringLiteral(attr.value) || attr.value.value !== oldValue) continue;
+
+                if (seen !== matchIndex) {
+                    seen += 1;
+                    continue;
+                }
+
+                attr.value.value = newValue;
+                if (attr.value.extra) {
+                    (attr.value.extra as Record<string, unknown>).rawValue = newValue;
+                    (attr.value.extra as Record<string, unknown>).raw = `"${newValue}"`;
+                }
+                changed = true;
+                path.stop();
+                return;
+            }
+        },
+    });
+
+    return changed;
+}
+
+export function updateComponentUsageClassNameAtIndex(
+    ast: T.File,
+    componentNames: string[],
+    className: string,
+    matchIndex: number,
+): boolean {
+    let seen = 0;
+    let changed = false;
+    const nameSet = new Set(componentNames);
+
+    traverse(ast, {
+        JSXOpeningElement(path) {
+            if (changed) return;
+            const nameNode = path.node.name;
+            if (!t.isJSXIdentifier(nameNode)) return;
+            if (!nameSet.has(nameNode.name)) return;
+
+            if (seen !== matchIndex) {
+                seen += 1;
+                return;
+            }
+
+            const attr = path.node.attributes.find(candidate =>
+                t.isJSXAttribute(candidate) &&
+                t.isJSXIdentifier(candidate.name) &&
+                candidate.name.name === 'className',
+            ) as T.JSXAttribute | undefined;
+
+            if (attr) {
+                attr.value = t.stringLiteral(className);
+            } else {
+                path.node.attributes.push(t.jsxAttribute(t.jsxIdentifier('className'), t.stringLiteral(className)));
+            }
+            changed = true;
+            path.stop();
+        },
+    });
+
+    return changed;
+}
+
+export function updateComponentUsageStringPropAtIndex(
+    ast: T.File,
+    componentNames: string[],
+    propName: string,
+    value: string,
+    matchIndex: number,
+): boolean {
+    let seen = 0;
+    let changed = false;
+    const nameSet = new Set(componentNames);
+
+    traverse(ast, {
+        JSXOpeningElement(path) {
+            if (changed) return;
+            const nameNode = path.node.name;
+            if (!t.isJSXIdentifier(nameNode)) return;
+            if (!nameSet.has(nameNode.name)) return;
+
+            if (seen !== matchIndex) {
+                seen += 1;
+                return;
+            }
+
+            const attr = path.node.attributes.find(candidate =>
+                t.isJSXAttribute(candidate) &&
+                t.isJSXIdentifier(candidate.name) &&
+                candidate.name.name === propName,
+            ) as T.JSXAttribute | undefined;
+
+            if (attr) {
+                attr.value = t.stringLiteral(value);
+            } else {
+                path.node.attributes.push(t.jsxAttribute(t.jsxIdentifier(propName), t.stringLiteral(value)));
+            }
+            changed = true;
+            path.stop();
+        },
+    });
+
+    return changed;
+}

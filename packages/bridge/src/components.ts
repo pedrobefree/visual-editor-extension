@@ -17,6 +17,10 @@ const COMPONENT_DIRS = new Set(['components', 'ui', 'features', 'modules', 'sect
 const EXPORT_RE = /export\s+(?:default\s+)?(?:function|const|class)\s+([A-Z][A-Za-z0-9]*)/g;
 const EXPORT_FROM_RE = /export\s*\{([^}]+)\}/g;
 
+function isPreviewableComponentName(name: string): boolean {
+    return /^[A-Z][A-Za-z0-9]*$/.test(name) && !/(Context|Provider)$/.test(name);
+}
+
 function extractExports(content: string): string[] {
     const names = new Set<string>();
     let m: RegExpExecArray | null;
@@ -59,12 +63,14 @@ function walkForComponents(dir: string, projectRoot: string, results: ComponentI
             if (st.isDirectory()) {
                 walkForComponents(full, projectRoot, results);
             } else if (isComponentFile(entry)) {
-                const content  = readFileSync(full, 'utf-8');
-                const exports  = extractExports(content);
-                if (!exports.length) continue;
                 const relPath  = full.replace(projectRoot + '/', '');
+                if (relPath.split('/').some(part => part.toLowerCase() === 'context')) continue;
+                const content  = readFileSync(full, 'utf-8');
+                const exports  = extractExports(content).filter(isPreviewableComponentName);
+                if (!exports.length) continue;
                 // Primary name: the file name without extension
-                const primary  = entry.replace(/\.(tsx|jsx)$/, '');
+                const fileBase = entry.replace(/\.(tsx|jsx)$/, '');
+                const primary  = exports.includes(fileBase) ? fileBase : exports[0]!;
                 results.push({ name: primary, relPath, filePath: full, exports });
             }
         } catch { /* skip unreadable */ }

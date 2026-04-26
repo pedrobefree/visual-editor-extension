@@ -2,8 +2,8 @@
    Component Browser Panel — Visual Edit Kit
    Lists all project components fetched from the bridge and lets the user:
    - Search by name
-   - Open the source file in VS Code
-   - Find instances on the current page (highlights via overlay)
+   - Edit instances that are present on the current page
+   - Open the source file in VS Code as a secondary action
    ----------------------------------------------------------------------- */
 
 import { attachDrag } from './drag-util';
@@ -16,6 +16,27 @@ interface ComponentInfo {
     relPath: string;
     filePath: string;
     exports: string[];
+}
+
+interface ComponentPresence {
+    oids: string[];
+    count: number;
+}
+
+function attrSelectorValue(value: string): string {
+    return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function topLevelMatches(elements: HTMLElement[]): HTMLElement[] {
+    const set = new Set(elements);
+    return elements.filter(el => {
+        let parent = el.parentElement;
+        while (parent) {
+            if (set.has(parent)) return false;
+            parent = parent.parentElement;
+        }
+        return true;
+    });
 }
 
 /* ── CSS ────────────────────────────────────────────────────────────────── */
@@ -52,6 +73,7 @@ const CSS = `
   display: flex; align-items: center; gap: 6px;
   padding: 7px 12px; border-bottom: 1px solid #1a1a1a; cursor: default;
 }
+.comp-item.on-page { background: rgba(20,184,166,.05); }
 .comp-item:hover { background: #1a1a1a; }
 .comp-icon { width: 26px; height: 26px; border-radius: 6px; background: #1e1e3a; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #818cf8; font-weight: 700; }
 .comp-info { flex: 1; min-width: 0; }
@@ -63,8 +85,13 @@ const CSS = `
   background: #1e1e1e; color: #777; font-size: 10px; transition: all .1s; white-space: nowrap;
 }
 .action-btn:hover { background: #6366f1; border-color: #6366f1; color: white; }
-.action-btn.find-btn:hover { background: #0d9488; border-color: #0d9488; }
-.badge-on-page { background: #1e3a1e; color: #4ade80; border-color: #15803d; font-size: 9px; padding: 2px 5px; border-radius: 3px; border: 1px solid; }
+.action-btn.edit-btn { background: #134e4a; border-color: #0f766e; color: #99f6e4; }
+.action-btn.edit-btn:hover { background: #0d9488; border-color: #0d9488; color: white; }
+.action-btn.preview-btn { background: #1e1e3a; border-color: #3730a3; color: #c7d2fe; }
+.action-btn.preview-btn:hover { background: #4f46e5; border-color: #4f46e5; color: white; }
+.action-btn:disabled { opacity: .35; cursor: not-allowed; background: #1e1e1e; border-color: #2a2a2a; color: #666; }
+.badge-on-page { background: #1e3a1e; color: #4ade80; border-color: #15803d; font-size: 9px; padding: 2px 5px; border-radius: 3px; border: 1px solid; margin-top: 4px; display: inline-flex; }
+.section-label { padding: 8px 12px 4px; color: #555; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; border-bottom: 1px solid #1a1a1a; }
 #empty { padding: 28px; text-align: center; color: #444; font-size: 11px; line-height: 1.6; }
 .state-msg { padding: 28px; text-align: center; font-size: 11px; line-height: 1.6; }
 .state-loading { color: #555; }
@@ -73,8 +100,10 @@ const CSS = `
 
 /* ── ComponentsPanel class ──────────────────────────────────────────────── */
 export interface ComponentsPanelCallbacks {
-    /** Called when the user clicks "Find" — scroll to or highlight element */
-    onFind: (oids: string[]) => void;
+    /** Called when the user asks to edit/highlight instances on the active page. */
+    onEditInstances: (oids: string[], componentName: string) => void;
+    /** Called when the user asks to open an off-page component preview in the browser. */
+    onOpenPreview: (path: string, componentName: string) => void;
 }
 
 export class ComponentsPanel {
@@ -84,7 +113,9 @@ export class ComponentsPanel {
     private shadow: ShadowRoot;
     private callbacks: ComponentsPanelCallbacks;
     private components: ComponentInfo[] = [];
+    private presenceByFile = new Map<string, ComponentPresence>();
     private query = '';
+    private searchValue = '';
     private dragCleanup: (() => void) | null = null;
 
     constructor(callbacks: ComponentsPanelCallbacks) {
@@ -124,46 +155,87 @@ export class ComponentsPanel {
             const data = await res.json() as { ok: boolean; components?: ComponentInfo[]; error?: string };
             if (!data.ok || !data.components) { this.renderState('error', data.error); return; }
             this.components = data.components;
+            await this.loadPresence();
             this.render();
         } catch {
             this.renderState('error', 'Bridge offline — inicie o bridge com `visual-edit-bridge`.');
         }
     }
 
-    private getOnPageOids(filePath: string): string[] {
-        // Find all DOM elements whose OID was generated from this component's file.
-        // We do this by fetching /oids and checking which oids' file matches.
-        // For now, we use a simpler approach: look for data-oid elements that
-        // are instances of this component on the current page.
-        // (The bridge's /oids endpoint maps oid → {file, line})
-        return []; // populated after /oids fetch — see findOnPage()
+    private async loadPresence(): Promise<void> {
+        try {
+            const res = await fetch(`${BRIDGE}/oids`, { signal: AbortSignal.timeout(5000) });
+            const data = await res.json() as { entries: Array<{ oid: string; file: string }> };
+            this.presenceByFile.clear();
+
+            for (const component of this.components) {
+                const oids = data.entries
+                    .filter(entry => this.fileMatches(component.filePath, entry.file))
+                    .map(entry => entry.oid)
+                    .filter((oid, index, arr) => arr.indexOf(oid) === index);
+
+                const elements = oids.flatMap(oid => {
+                    return Array.from(document.querySelectorAll<HTMLElement>(`[${OID_ATTR}="${attrSelectorValue(oid)}"]`));
+                });
+                const count = topLevelMatches(elements).length;
+
+                if (count > 0) this.presenceByFile.set(component.filePath, { oids, count });
+            }
+        } catch {
+            this.presenceByFile.clear();
+        }
+    }
+
+    private fileMatches(filePath: string, indexedFile: string): boolean {
+        return filePath === indexedFile ||
+            filePath.endsWith(indexedFile) ||
+            indexedFile === filePath.split('/').pop();
     }
 
     private render(): void {
-        const filtered = this.query
+        const filteredRaw = this.query
             ? this.components.filter(c =>
                 c.name.toLowerCase().includes(this.query) ||
                 c.relPath.toLowerCase().includes(this.query))
             : this.components;
 
+        const filtered = [...filteredRaw].sort((a, b) => {
+            const aCount = this.presenceByFile.get(a.filePath)?.count ?? 0;
+            const bCount = this.presenceByFile.get(b.filePath)?.count ?? 0;
+            if (aCount !== bCount) return bCount - aCount;
+            return a.name.localeCompare(b.name);
+        });
+
         const style = document.createElement('style');
         style.textContent = CSS;
 
-        const items = filtered.map(c => {
+        const itemHtml = (c: ComponentInfo) => {
             const initial = c.name[0]?.toUpperCase() ?? '?';
+            const presence = this.presenceByFile.get(c.filePath);
+            const count = presence?.count ?? 0;
             return `
-              <div class="comp-item" data-name="${c.name}" data-file="${c.filePath}" data-relpath="${c.relPath}">
+              <div class="comp-item${count ? ' on-page' : ''}" data-name="${c.name}" data-file="${c.filePath}" data-relpath="${c.relPath}">
                 <div class="comp-icon">${initial}</div>
                 <div class="comp-info">
                   <div class="comp-name">${c.name}</div>
                   <div class="comp-path">${c.relPath}</div>
+                  ${count ? `<span class="badge-on-page">${count} na página</span>` : ''}
                 </div>
                 <div class="comp-actions">
-                  <button class="action-btn find-btn" data-file="${c.filePath}" title="Destacar na página">⌖</button>
+                  ${count
+                    ? `<button class="action-btn edit-btn" data-file="${c.filePath}" data-name="${c.name}" title="Editar instâncias nesta página">Editar</button>`
+                    : `<button class="action-btn preview-btn" data-file="${c.filePath}" data-name="${c.name}" title="Abrir preview no browser">Browser</button>`}
                   <button class="action-btn open-btn" data-file="${c.filePath}" title="Abrir no editor">↗</button>
                 </div>
               </div>`;
-        }).join('');
+        };
+
+        const onPage = filtered.filter(c => (this.presenceByFile.get(c.filePath)?.count ?? 0) > 0);
+        const offPage = filtered.filter(c => (this.presenceByFile.get(c.filePath)?.count ?? 0) === 0);
+        const items = [
+            onPage.length ? `<div class="section-label">Na página ativa</div>${onPage.map(itemHtml).join('')}` : '',
+            offPage.length ? `<div class="section-label">Outros componentes</div>${offPage.map(itemHtml).join('')}` : '',
+        ].join('');
 
         const wrapper = document.createElement('div');
         wrapper.innerHTML = `
@@ -173,7 +245,7 @@ export class ComponentsPanel {
               <span class="comp-count">${this.components.length}</span>
             </div>
             <div class="search-wrap">
-              <input class="search-input" id="comp-search" placeholder="Buscar componente…" value="${this.query}" autocomplete="off" spellcheck="false" />
+              <input class="search-input" id="comp-search" placeholder="Buscar componente…" value="${this.searchValue.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}" autocomplete="off" spellcheck="false" />
             </div>
             <div id="comp-body">
               ${filtered.length ? items : '<div id="empty">Nenhum componente encontrado.</div>'}
@@ -208,10 +280,16 @@ export class ComponentsPanel {
         // Search
         const searchInput = this.shadow.querySelector('#comp-search') as HTMLInputElement | null;
         searchInput?.addEventListener('input', () => {
-            this.query = searchInput.value.trim().toLowerCase();
+            const cursor = searchInput.selectionStart ?? searchInput.value.length;
+            this.searchValue = searchInput.value;
+            this.query = this.searchValue.trim().toLowerCase();
             this.render();
+            const nextInput = this.shadow.querySelector('#comp-search') as HTMLInputElement | null;
+            nextInput?.focus();
+            nextInput?.setSelectionRange(cursor, cursor);
         });
         searchInput?.focus();
+        searchInput?.setSelectionRange(this.searchValue.length, this.searchValue.length);
 
         // Open in editor
         this.shadow.querySelectorAll('.open-btn').forEach(btn => {
@@ -226,23 +304,36 @@ export class ComponentsPanel {
             });
         });
 
-        // Find on page — highlight all instances
-        this.shadow.querySelectorAll('.find-btn').forEach(btn => {
+        // Edit in browser — highlight all instances and select the first one.
+        this.shadow.querySelectorAll('.edit-btn').forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 const filePath = (btn as HTMLElement).dataset.file ?? '';
-                // Fetch the oid index and find all oids from this file
+                const name = (btn as HTMLElement).dataset.name ?? '';
+                const presence = this.presenceByFile.get(filePath);
+                if (!presence?.count) return;
+                this.callbacks.onEditInstances(presence.oids, name);
+            });
+        });
+
+        // Open off-page component in a browser preview route.
+        this.shadow.querySelectorAll('.preview-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const filePath = (btn as HTMLElement).dataset.file ?? '';
+                const name = (btn as HTMLElement).dataset.name ?? '';
                 try {
-                    const res  = await fetch(`${BRIDGE}/oids`);
-                    const data = await res.json() as { entries: Array<{ oid: string; file: string }> };
-                    const oids = data.entries
-                        .filter(entry => entry.file === filePath.split('/').pop() ||
-                                        filePath.endsWith(entry.file))
-                        .map(e => e.oid)
-                        // Only those that exist in the current DOM
-                        .filter(oid => !!document.querySelector(`[${OID_ATTR}="${oid}"]`));
-                    this.callbacks.onFind(oids);
-                } catch { /* bridge offline */ }
+                    const res = await fetch(`${BRIDGE}/component-preview`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ filePath, name }),
+                    });
+                    const data = await res.json() as { ok: boolean; path?: string; error?: string };
+                    if (!data.ok || !data.path) throw new Error(data.error ?? 'Preview unavailable');
+                    this.callbacks.onOpenPreview(data.path, name);
+                } catch {
+                    // The editor-open button remains available as the fallback.
+                }
             });
         });
     }

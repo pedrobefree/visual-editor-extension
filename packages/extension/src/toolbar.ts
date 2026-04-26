@@ -35,6 +35,17 @@ const CSS = `
 .tb-btn:hover { background: #1e1e1e; color: #e5e5e5; border-color: #2a2a2a; }
 .tb-btn.active { background: #1e1e3a; color: #818cf8; border-color: #3730a3; }
 .tb-icon { width: 13px; height: 13px; flex-shrink: 0; display: block; }
+.bp-group {
+  display: flex; align-items: center; gap: 2px;
+  background: #101010; border: 1px solid #252525; border-radius: 7px; padding: 2px;
+}
+.bp-btn {
+  border: 0; background: transparent; color: #777;
+  padding: 3px 6px; border-radius: 5px; cursor: pointer;
+  font-size: 10px; font-weight: 700; line-height: 1;
+}
+.bp-btn:hover { color: #e5e5e5; background: #1e1e1e; }
+.bp-btn.active { color: #fff; background: #6366f1; }
 .tb-close {
   padding: 4px 7px; border-radius: 6px; cursor: pointer;
   background: none; border: none; color: #555; font-size: 13px;
@@ -72,11 +83,21 @@ const SVG_COMPONENTS = `<svg class="tb-icon" viewBox="0 0 16 16" fill="none" str
   <circle cx="11.5" cy="11.5" r="2.5"/>
 </svg>`;
 
+const BREAKPOINTS = [
+    { label: 'Base', prefix: '', width: null, title: 'Default/mobile: applies at all viewport widths unless overridden.' },
+    { label: 'sm', prefix: 'sm:', width: 640, title: 'sm: Minimum width of 40rem (640px).' },
+    { label: 'md', prefix: 'md:', width: 768, title: 'md: Minimum width of 48rem (768px).' },
+    { label: 'lg', prefix: 'lg:', width: 1024, title: 'lg: Minimum width of 64rem (1024px).' },
+    { label: 'xl', prefix: 'xl:', width: 1280, title: 'xl: Minimum width of 80rem (1280px).' },
+    { label: '2xl', prefix: '2xl:', width: 1536, title: '2xl: Minimum width of 96rem (1536px).' },
+];
+
 export interface ToolbarCallbacks {
     onTheme: () => void;
     onTree: () => void;
     onComponents: () => void;
     onOutline: (active: boolean) => void;
+    onBreakpoint: (prefix: string, width: number | null) => void;
     onDisable: () => void;
 }
 
@@ -92,6 +113,7 @@ export class VisualEditToolbar {
     private treeActive       = false;
     private componentsActive = false;
     private outlineActive    = false;
+    private responsivePrefix = '';
 
     constructor(callbacks: ToolbarCallbacks) {
         this.callbacks = callbacks;
@@ -120,6 +142,12 @@ export class VisualEditToolbar {
             <button class="tb-btn${this.treeActive       ? ' active' : ''}" id="tb-tree">${SVG_TREE} Árvore</button>
             <button class="tb-btn${this.componentsActive ? ' active' : ''}" id="tb-components">${SVG_COMPONENTS} Componentes</button>
             <button class="tb-btn${this.outlineActive    ? ' active' : ''}" id="tb-outline">${SVG_OUTLINE} Contornos</button>
+            <div class="divider"></div>
+            <div class="bp-group" aria-label="Preview responsivo">
+              ${BREAKPOINTS.map(bp =>
+                  `<button class="bp-btn${this.responsivePrefix === bp.prefix ? ' active' : ''}" data-prefix="${bp.prefix}" data-width="${bp.width ?? ''}" title="${bp.title}">${bp.label}</button>`
+              ).join('')}
+            </div>
             <div class="divider"></div>
             <button class="tb-close" id="tb-close" title="Desativar Visual Edit">✕</button>
           </div>`;
@@ -164,6 +192,17 @@ export class VisualEditToolbar {
             this.outlineActive = !this.outlineActive;
             this.render();
             this.callbacks.onOutline(this.outlineActive);
+        });
+
+        this.shadow.querySelectorAll('.bp-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const el = btn as HTMLElement;
+                const prefix = el.dataset.prefix ?? '';
+                const width = el.dataset.width ? Number(el.dataset.width) : null;
+                this.responsivePrefix = prefix;
+                this.render();
+                this.callbacks.onBreakpoint(prefix, width);
+            });
         });
 
         this.shadow.querySelector('#tb-close')?.addEventListener('click', () => {

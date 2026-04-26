@@ -33,6 +33,7 @@ export function attachDrag(
         // Switch from any right/bottom anchoring to explicit left/top
         panelEl.style.right  = 'auto';
         panelEl.style.bottom = 'auto';
+        panelEl.style.transform = 'none';
         panelEl.style.left   = `${startL}px`;
         panelEl.style.top    = `${startT}px`;
 

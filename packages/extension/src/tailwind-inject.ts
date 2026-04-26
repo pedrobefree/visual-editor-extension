@@ -43,12 +43,15 @@ const COLOR_HEX: Record<string, Record<number, string>> = {
     slate:   { 50:'#f8fafc',100:'#f1f5f9',200:'#e2e8f0',300:'#cbd5e1',400:'#94a3b8',500:'#64748b',600:'#475569',700:'#334155',800:'#1e293b',900:'#0f172a',950:'#020617' },
     gray:    { 50:'#f9fafb',100:'#f3f4f6',200:'#e5e7eb',300:'#d1d5db',400:'#9ca3af',500:'#6b7280',600:'#4b5563',700:'#374151',800:'#1f2937',900:'#111827',950:'#030712' },
     zinc:    { 50:'#fafafa',100:'#f4f4f5',200:'#e4e4e7',300:'#d4d4d8',400:'#a1a1aa',500:'#71717a',600:'#52525b',700:'#3f3f46',800:'#27272a',900:'#18181b',950:'#09090b' },
+    neutral: { 50:'#fafafa',100:'#f5f5f5',200:'#e5e5e5',300:'#d4d4d4',400:'#a3a3a3',500:'#737373',600:'#525252',700:'#404040',800:'#262626',900:'#171717',950:'#0a0a0a' },
+    stone:   { 50:'#fafaf9',100:'#f5f5f4',200:'#e7e5e4',300:'#d6d3d1',400:'#a8a29e',500:'#78716c',600:'#57534e',700:'#44403c',800:'#292524',900:'#1c1917',950:'#0c0a09' },
     red:     { 50:'#fef2f2',100:'#fee2e2',200:'#fecaca',300:'#fca5a5',400:'#f87171',500:'#ef4444',600:'#dc2626',700:'#b91c1c',800:'#991b1b',900:'#7f1d1d',950:'#450a0a' },
     orange:  { 50:'#fff7ed',100:'#ffedd5',200:'#fed7aa',300:'#fdba74',400:'#fb923c',500:'#f97316',600:'#ea580c',700:'#c2410c',800:'#9a3412',900:'#7c2d12',950:'#431407' },
     amber:   { 50:'#fffbeb',100:'#fef3c7',200:'#fde68a',300:'#fcd34d',400:'#fbbf24',500:'#f59e0b',600:'#d97706',700:'#b45309',800:'#92400e',900:'#78350f',950:'#451a03' },
     yellow:  { 50:'#fefce8',100:'#fef9c3',200:'#fef08a',300:'#fde047',400:'#facc15',500:'#eab308',600:'#ca8a04',700:'#a16207',800:'#854d0e',900:'#713f12',950:'#422006' },
     lime:    { 50:'#f7fee7',100:'#ecfccb',200:'#d9f99d',300:'#bef264',400:'#a3e635',500:'#84cc16',600:'#65a30d',700:'#4d7c0f',800:'#3f6212',900:'#365314',950:'#1a2e05' },
     green:   { 50:'#f0fdf4',100:'#dcfce7',200:'#bbf7d0',300:'#86efac',400:'#4ade80',500:'#22c55e',600:'#16a34a',700:'#15803d',800:'#166534',900:'#14532d',950:'#052e16' },
+    emerald: { 50:'#ecfdf5',100:'#d1fae5',200:'#a7f3d0',300:'#6ee7b7',400:'#34d399',500:'#10b981',600:'#059669',700:'#047857',800:'#065f46',900:'#064e3b',950:'#022c22' },
     teal:    { 50:'#f0fdfa',100:'#ccfbf1',200:'#99f6e4',300:'#5eead4',400:'#2dd4bf',500:'#14b8a6',600:'#0d9488',700:'#0f766e',800:'#115e59',900:'#134e4a',950:'#042f2e' },
     cyan:    { 50:'#ecfeff',100:'#cffafe',200:'#a5f3fc',300:'#67e8f9',400:'#22d3ee',500:'#06b6d4',600:'#0891b2',700:'#0e7490',800:'#155e75',900:'#164e63',950:'#083344' },
     sky:     { 50:'#f0f9ff',100:'#e0f2fe',200:'#bae6fd',300:'#7dd3fc',400:'#38bdf8',500:'#0ea5e9',600:'#0284c7',700:'#0369a1',800:'#075985',900:'#0c4a6e',950:'#082f49' },
@@ -66,16 +69,65 @@ const SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
 
 /* ── CSS declaration generator ──────────────────────────────────────────── */
 function classToCss(cls: string): string | null {
+    const [baseCls, interpolation] = cls.split('/') as [string, string?];
+    const interpolationValue = interpolation
+        ? ['longer','shorter','increasing','decreasing'].includes(interpolation)
+            ? `oklch ${interpolation} hue`
+            : interpolation
+        : '';
+    const interpolationMode = interpolationValue ? ` in ${interpolationValue}` : '';
 
     // ── Background colors ──────────────────────────────────────────────────
+    const gradDir: Record<string,string> = {
+        'bg-gradient-to-t':'to top',
+        'bg-gradient-to-tr':'to top right',
+        'bg-gradient-to-r':'to right',
+        'bg-gradient-to-br':'to bottom right',
+        'bg-gradient-to-b':'to bottom',
+        'bg-gradient-to-bl':'to bottom left',
+        'bg-gradient-to-l':'to left',
+        'bg-gradient-to-tl':'to top left',
+        'bg-linear-to-t':'to top',
+        'bg-linear-to-tr':'to top right',
+        'bg-linear-to-r':'to right',
+        'bg-linear-to-br':'to bottom right',
+        'bg-linear-to-b':'to bottom',
+        'bg-linear-to-bl':'to bottom left',
+        'bg-linear-to-l':'to left',
+        'bg-linear-to-tl':'to top left',
+    };
+    if (gradDir[baseCls]) return `background-image:linear-gradient(${gradDir[baseCls]}${interpolationMode},var(--tw-gradient-stops))`;
+    const linearAngle = baseCls.match(/^-?bg-linear-(\d+)$/);
+    if (linearAngle) {
+        const sign = baseCls.startsWith('-') ? '-' : '';
+        return `background-image:linear-gradient(${sign}${linearAngle[1]}deg${interpolationMode},var(--tw-gradient-stops))`;
+    }
+    if (baseCls === 'bg-radial') return `background-image:radial-gradient(${interpolationValue ? `in ${interpolationValue},` : ''}var(--tw-gradient-stops))`;
+    const radialPosition = baseCls.match(/^bg-radial-\[(.+)\]$/);
+    if (radialPosition) {
+        const pos = radialPosition[1]!.replace(/_/g, ' ');
+        return `background-image:radial-gradient(${pos}${interpolationMode},var(--tw-gradient-stops))`;
+    }
+    if (baseCls === 'bg-conic') return `background-image:conic-gradient(${interpolationValue ? `in ${interpolationValue},` : ''}var(--tw-gradient-stops))`;
+    const conicAngle = baseCls.match(/^-?bg-conic-(\d+)$/);
+    if (conicAngle) {
+        const sign = baseCls.startsWith('-') ? '-' : '';
+        return `background-image:conic-gradient(from ${sign}${conicAngle[1]}deg${interpolationMode},var(--tw-gradient-stops))`;
+    }
+    if (baseCls === 'bg-none') return 'background-image:none';
     for (const c of COLORS) {
         for (const s of SHADES) {
-            if (cls === `bg-${c}-${s}`) return `background-color:${COLOR_HEX[c]![s]}`;
+            if (baseCls === `bg-${c}-${s}`) return `background-color:${COLOR_HEX[c]![s]}`;
+            if (baseCls === `from-${c}-${s}`) return `--tw-gradient-from:${COLOR_HEX[c]![s]};--tw-gradient-stops:var(--tw-gradient-from) var(--tw-gradient-from-position),var(--tw-gradient-to) var(--tw-gradient-to-position);--tw-gradient-to:rgba(255,255,255,0);--tw-gradient-from-position:0%;--tw-gradient-to-position:100%`;
+            if (baseCls === `via-${c}-${s}`) return `--tw-gradient-via:${COLOR_HEX[c]![s]};--tw-gradient-stops:var(--tw-gradient-from) var(--tw-gradient-from-position),var(--tw-gradient-via) var(--tw-gradient-via-position),var(--tw-gradient-to) var(--tw-gradient-to-position);--tw-gradient-via-position:50%`;
+            if (baseCls === `to-${c}-${s}`) return `--tw-gradient-to:${COLOR_HEX[c]![s]};--tw-gradient-to-position:100%`;
         }
     }
-    if (cls === 'bg-white')       return 'background-color:#ffffff';
-    if (cls === 'bg-black')       return 'background-color:#000000';
-    if (cls === 'bg-transparent') return 'background-color:transparent';
+    const stopPosition = baseCls.match(/^(from|via|to)-(\d+)%$/);
+    if (stopPosition) return `--tw-gradient-${stopPosition[1]}-position:${stopPosition[2]}%`;
+    if (baseCls === 'bg-white')       return 'background-color:#ffffff';
+    if (baseCls === 'bg-black')       return 'background-color:#000000';
+    if (baseCls === 'bg-transparent') return 'background-color:transparent';
 
     // ── Text colors ────────────────────────────────────────────────────────
     for (const c of COLORS) {
@@ -102,6 +154,13 @@ function classToCss(cls: string): string | null {
             if (cls === `ring-${c}-${s}`) return `--tw-ring-color:${COLOR_HEX[c]![s]};box-shadow:var(--tw-ring-inset,) 0 0 0 var(--tw-ring-offset-width,0px) var(--tw-ring-offset-color,#fff),var(--tw-ring-inset,) 0 0 0 calc(3px + var(--tw-ring-offset-width,0px)) var(--tw-ring-color,${COLOR_HEX[c]![s]})`;
         }
     }
+    const ringWidth = cls.match(/^ring(?:-(0|1|2|4|8))?$/);
+    if (ringWidth) {
+        const width = ringWidth[1] ?? '3';
+        return `--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / .5);box-shadow:0 0 0 calc(${width}px + var(--tw-ring-offset-width,0px)) var(--tw-ring-color)`;
+    }
+    const ringOffset = cls.match(/^ring-offset-(0|1|2|4|8)$/);
+    if (ringOffset) return `--tw-ring-offset-width:${ringOffset[1]}px`;
 
     // ── Spacing ────────────────────────────────────────────────────────────
     const spacingPrefixes: Record<string, string | string[]> = {
@@ -306,6 +365,20 @@ function classToCss(cls: string): string | null {
         'border':'1px','border-0':'0px','border-2':'2px','border-4':'4px','border-8':'8px',
     };
     if (borderWidths[cls]) return `border-width:${borderWidths[cls]}`;
+    const sideBorder = cls.match(/^border-([xytrbl])(?:-(0|2|4|8))?$/);
+    if (sideBorder) {
+        const side = sideBorder[1]!;
+        const value = sideBorder[2] ? `${sideBorder[2]}px` : '1px';
+        const props: Record<string,string[]> = {
+            x: ['border-left-width','border-right-width'],
+            y: ['border-top-width','border-bottom-width'],
+            t: ['border-top-width'],
+            r: ['border-right-width'],
+            b: ['border-bottom-width'],
+            l: ['border-left-width'],
+        };
+        return props[side]!.map(prop => `${prop}:${value}`).join(';');
+    }
     const borderStyles: Record<string,string> = {
         'border-solid':'solid','border-dashed':'dashed','border-dotted':'dotted',
         'border-double':'double','border-none':'none',
@@ -314,6 +387,7 @@ function classToCss(cls: string): string | null {
 
     // ── Shadow ─────────────────────────────────────────────────────────────
     const shadows: Record<string,string> = {
+        'shadow-xs':'0 1px 1px 0 rgb(0 0 0/0.05)',
         'shadow-sm':'0 1px 2px 0 rgb(0 0 0/0.05)',
         'shadow':'0 1px 3px 0 rgb(0 0 0/0.1),0 1px 2px -1px rgb(0 0 0/0.1)',
         'shadow-md':'0 4px 6px -1px rgb(0 0 0/0.1),0 2px 4px -2px rgb(0 0 0/0.1)',
@@ -407,10 +481,36 @@ function classToCss(cls: string): string | null {
  */
 export function injectClassForPreview(cls: string): void {
     if (!cls || injected.has(cls)) return;
-    const css = classToCss(cls);
+    const parts = cls.split(':');
+    const baseCls = parts.pop() ?? cls;
+    const variants = parts;
+    const css = classToCss(baseCls);
     if (!css) return;
     const el = getStyleEl();
-    el.textContent += `.${escapeCls(cls)}{${css}}\n`;
+    let selector = `.${escapeCls(cls)}`;
+    let mediaPrefix = '';
+    let mediaSuffix = '';
+    let responsiveVariant = '';
+
+    for (const variant of variants) {
+        if (variant === 'sm') { responsiveVariant = 'sm:'; mediaPrefix += '@media (min-width:640px){'; mediaSuffix += '}'; continue; }
+        if (variant === 'md') { responsiveVariant = 'md:'; mediaPrefix += '@media (min-width:768px){'; mediaSuffix += '}'; continue; }
+        if (variant === 'lg') { responsiveVariant = 'lg:'; mediaPrefix += '@media (min-width:1024px){'; mediaSuffix += '}'; continue; }
+        if (variant === 'xl') { responsiveVariant = 'xl:'; mediaPrefix += '@media (min-width:1280px){'; mediaSuffix += '}'; continue; }
+        if (variant === '2xl') { responsiveVariant = '2xl:'; mediaPrefix += '@media (min-width:1536px){'; mediaSuffix += '}'; continue; }
+        if (variant === 'hover') selector += ':hover';
+        else if (variant === 'focus') selector += ':focus';
+        else if (variant === 'active') selector += ':active';
+        else if (variant === 'disabled') selector += ':disabled';
+        else if (variant === 'focus-within') selector += ':focus-within';
+        else if (variant === 'placeholder') selector += '::placeholder';
+        else if (variant === 'dark') selector = `.dark ${selector},.dark-mode ${selector}`;
+    }
+
+    el.textContent += `${mediaPrefix}${selector}{${css}}${mediaSuffix}\n`;
+    if (responsiveVariant) {
+        el.textContent += `html[data-ve-responsive-prefix="${responsiveVariant}"] ${selector}{${css}}\n`;
+    }
     injected.add(cls);
 }
 
@@ -418,7 +518,9 @@ export function injectClassForPreview(cls: string): void {
  * Injeta CSS para todas as classes de um className string (espaços separando).
  */
 export function injectClassesForPreview(classString: string): void {
-    for (const cls of classString.split(/\s+/).filter(Boolean)) {
+    const classes = classString.split(/\s+/).filter(Boolean);
+    classes.sort((a, b) => Number(a.includes(':')) - Number(b.includes(':')));
+    for (const cls of classes) {
         injectClassForPreview(cls);
     }
 }

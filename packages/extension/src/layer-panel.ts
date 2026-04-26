@@ -86,12 +86,12 @@ const CSS = `
 * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 #layer-panel {
   position: fixed; top: 52px; left: 12px; z-index: 2147483645;
-  width: 264px; max-height: calc(100vh - 68px);
+  width: 264px; height: min(760px, calc(100vh - 68px)); min-width: 220px; min-height: 180px; max-width: calc(100vw - 24px); max-height: calc(100vh - 68px);
   background: #141414; color: #e5e5e5;
   border: 1px solid #2a2a2a; border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0,0,0,.6);
   display: flex; flex-direction: column;
-  font-size: 12px; overflow: hidden;
+  font-size: 12px; overflow: hidden; resize: both;
 }
 #layer-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -123,7 +123,7 @@ const CSS = `
 .toggle-btn.leaf { visibility: hidden; }
 .toggle-btn::before { content: '▾'; }
 .toggle-btn.collapsed::before { content: '▸'; }
-.node-icon { font-size: 9px; color: #555; flex-shrink: 0; width: 11px; text-align: center; }
+.node-icon { font-size: 12px; color: #555; flex-shrink: 0; width: 15px; text-align: center; }
 .node-label {
   flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; font-size: 11px; color: #999;
@@ -136,6 +136,7 @@ const CSS = `
 /* ── Panel class ────────────────────────────────────────────────────────── */
 export interface LayerPanelCallbacks {
     onSelect: (el: HTMLElement, oid: string) => void;
+    onHover?: (el: HTMLElement | null, oid: string) => void;
 }
 
 export class LayerPanel {
@@ -245,6 +246,15 @@ export class LayerPanel {
 
         // Node clicks
         this.shadow.querySelectorAll('.tree-node').forEach(nodeEl => {
+            nodeEl.addEventListener('mouseenter', () => {
+                const oid = (nodeEl as HTMLElement).dataset.oid ?? '';
+                const el = document.querySelector<HTMLElement>(`[${OID_ATTR}="${oid}"]`);
+                this.callbacks.onHover?.(el, oid);
+            });
+            nodeEl.addEventListener('mouseleave', () => {
+                const oid = (nodeEl as HTMLElement).dataset.oid ?? '';
+                this.callbacks.onHover?.(null, oid);
+            });
             nodeEl.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const oid    = (nodeEl as HTMLElement).dataset.oid ?? '';
@@ -273,5 +283,9 @@ export class LayerPanel {
         });
     }
 
-    destroy(): void { this.dragCleanup?.(); this.host.remove(); }
+    destroy(): void {
+        this.callbacks.onHover?.(null, '');
+        this.dragCleanup?.();
+        this.host.remove();
+    }
 }
