@@ -8,6 +8,7 @@
     "./vite": "./src/vite-plugin.ts",
     "./babel": "./src/babel-plugin.ts",
     "./next-loader": "./src/next-loader.ts",
+    "./next-config": "./src/next-config.ts",
     "./init": "./src/init.ts"
   },
   "scripts": {

@@ -202,8 +202,11 @@ export class ComponentsPanel {
 
     private async loadComponents(): Promise<void> {
         try {
-            const res  = await fetch(`${BRIDGE}/components`, { signal: AbortSignal.timeout(5000) });
-            const data = await res.json() as { ok: boolean; components?: ComponentInfo[]; error?: string };
+            const [compRes] = await Promise.all([
+                fetch(`${BRIDGE}/components`, { signal: AbortSignal.timeout(5000) }),
+                this.loadPresets(),
+            ]);
+            const data = await compRes.json() as { ok: boolean; components?: ComponentInfo[]; error?: string };
             if (!data.ok || !data.components) { this.renderState('error', data.error); return; }
             this.components = data.components;
             await this.loadPresence();
@@ -602,10 +605,10 @@ export class ComponentsPanel {
                 this.components = [...this.components, newComp];
                 this.render();
             } else {
-                this.render();
+                this.renderState('error', data.error ?? t('componentsDupError'));
             }
         } catch {
-            this.render();
+            this.renderState('error', t('componentsDupError'));
         }
     }
 

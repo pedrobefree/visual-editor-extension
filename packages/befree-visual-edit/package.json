@@ -1,6 +1,6 @@
 {
   "name": "befree-visual-edit",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "description": "Visual editor for React/Next.js apps — edit text, Tailwind classes and more directly in the browser",
   "type": "module",
   "bin": {
@@ -9,7 +9,8 @@
   "exports": {
     "./vite": "./dist/vite.js",
     "./babel": "./dist/babel.js",
-    "./next-loader": "./dist/next-loader.js"
+    "./next-loader": "./dist/next-loader.js",
+    "./next": "./dist/next.js"
   },
   "scripts": {
     "build": "bun run build.ts",

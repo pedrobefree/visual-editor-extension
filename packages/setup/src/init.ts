@@ -2,7 +2,7 @@
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'fs';
 import { resolve, join } from 'path';
 
-const NEXT_WEBPACK_MARKER = 'befree-visual-edit/next-loader';
+const NEXT_WEBPACK_MARKER = 'befree-visual-edit/next';
 
 function generatedBabelConfig(content: string): boolean {
     try {
@@ -33,28 +33,38 @@ function removeGeneratedBabelConfig(projectRoot: string): void {
 }
 
 function nextWebpackWrapper(format: 'cjs' | 'esm'): string {
-    const resolver = format === 'esm'
-        ? `import { createRequire as createBefreeVisualEditRequire } from 'module';
-const befreeVisualEditRequire = createBefreeVisualEditRequire(import.meta.url);
+    if (format === 'esm') {
+        return `import { withVisualEdit as withBefreeVisualEdit } from 'befree-visual-edit/next';\n\n`;
+    }
 
-`
-        : `const befreeVisualEditRequire = require;
-
-`;
-
-    return `${resolver}const withBefreeVisualEdit = (nextConfig = {}) => ({
+    // CJS fallback: inline wrapper with bridge spawn via require.resolve
+    return `const { spawn: _befreeSpawn } = require('child_process');
+const { createConnection: _befreeConnect } = require('net');
+let _befreeBridgeStarted = false;
+const _ensureBefreeBridge = () => {
+  if (_befreeBridgeStarted) return;
+  _befreeBridgeStarted = true;
+  const s = _befreeConnect({ port: 5179, host: '127.0.0.1' });
+  s.once('connect', () => { s.destroy(); });
+  s.once('error', () => {
+    try {
+      const cli = require.resolve('befree-visual-edit/next-loader').replace(/next-loader\\.js$/, 'cli.js');
+      const child = _befreeSpawn(process.execPath, [cli, 'bridge', process.cwd()], { stdio: 'inherit', detached: false });
+      child.on('error', () => { _befreeBridgeStarted = false; });
+      process.on('exit', () => { try { child.kill(); } catch {} });
+    } catch { _befreeBridgeStarted = false; }
+  });
+};
+const withBefreeVisualEdit = (nextConfig = {}) => ({
   ...nextConfig,
   webpack(config, options) {
+    if (options.dev && options.isServer && options.nextRuntime !== 'edge') _ensureBefreeBridge();
     config.module.rules.push({
       test: /\\.(tsx|jsx)$/,
       exclude: /node_modules/,
-      use: [befreeVisualEditRequire.resolve('befree-visual-edit/next-loader')],
+      use: [require.resolve('befree-visual-edit/next-loader')],
     });
-
-    if (typeof nextConfig.webpack === 'function') {
-      return nextConfig.webpack(config, options);
-    }
-
+    if (typeof nextConfig.webpack === 'function') return nextConfig.webpack(config, options);
     return config;
   },
 });
@@ -174,33 +184,14 @@ export async function runInit(targetPath?: string): Promise<void> {
         ensureNextConfig(projectRoot);
     }
 
-    // ── 4. Add bridge to dev scripts in package.json ─────────────────────────────
-    const bridgeCmd = 'npx befree-visual-edit bridge';
-    if (pkg.scripts?.['bridge']?.includes('befree-visual-edit')) {
-        console.log('✅ Bridge já integrado ao package.json. Pulando.');
-    } else {
-        pkg.scripts = pkg.scripts ?? {};
-        const originalDev = pkg.scripts.dev ?? 'vite';
-
-        pkg.scripts['dev'] = `${bridgeCmd} & ${originalDev}`;
-        pkg.scripts['dev:edit'] = `${bridgeCmd} & ${originalDev}`;
-        pkg.scripts['bridge'] = bridgeCmd;
-
-        writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
-        console.log('✅ Scripts configurados:');
-        console.log('   npm run dev      — bridge + dev server (uso diário)');
-        console.log('   npm run dev:edit — mesmo que dev (alternativa)');
-        console.log('   npm run bridge   — só o bridge');
-    }
-
-    // ── 5. Print next steps ──────────────────────────────────────────────────────
+    // ── 4. Print next steps ──────────────────────────────────────────────────────
     console.log(`
 ╔══════════════════════════════════════════════════════════════╗
 ║  Tudo pronto!                                                ║
 ╠══════════════════════════════════════════════════════════════╣
-║  1. Inicie seu projeto:                                      ║
+║  1. Inicie seu projeto normalmente:                          ║
 ║     npm run dev                                              ║
-║     (a bridge sobe automaticamente junto)                    ║
+║     (a bridge sobe automaticamente junto ao dev server)      ║
 ║                                                              ║
 ║  2. Instale a extensão Chrome:                               ║
 ║     https://chromewebstore.google.com (busque befree)        ║

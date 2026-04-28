@@ -44,4 +44,12 @@ await Bun.build({
     naming: '[name].js',
 });
 
+// Next.js config wrapper — withVisualEdit() auto-starts bridge + injects OID loader
+await Bun.build({
+    entrypoints: ['./src/next.ts'],
+    outdir: OUT,
+    target: 'node',
+    naming: '[name].js',
+});
+
 console.log('[build] ✅ befree-visual-edit built to ./dist');

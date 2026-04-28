@@ -104,6 +104,28 @@ export function Card() {
         expect(result.error).toContain('outside project root');
     }));
 
+    test('does not rename import-aliased symbols with the same name', () => withProject(root => {
+        // Reproduces: import { Calendar as AriaCalendar } — the imported name "Calendar"
+        // must not be rewritten to "CalendarCopy", or AriaCalendar would resolve to undefined.
+        const source = write(root, 'src/components/Calendar.tsx', `import { Calendar as AriaCalendar } from 'react-aria-components';
+export interface CalendarProps { className?: string; }
+export function Calendar({ className }: CalendarProps) {
+  return <AriaCalendar className={className} />;
+}
+`);
+        const result = duplicateComponent(root, source, 'CalendarCopy');
+        expect(result.ok).toBe(true);
+
+        const content = readFileSync(result.newFilePath!, 'utf-8');
+        // Import alias must remain intact — renaming it would make AriaCalendar undefined
+        expect(content).toContain("import { Calendar as AriaCalendar }");
+        // Export declaration must be renamed
+        expect(content).toContain('export function CalendarCopy');
+        expect(content).toContain('CalendarCopyProps');
+        // JSX usage of AriaCalendar must be unchanged
+        expect(content).toContain('<AriaCalendar');
+    }));
+
     test('avoids name collision with numeric suffix', () => withProject(root => {
         const source = write(root, 'src/components/Hero.tsx', 'export function Hero() { return <section />; }');
         // Pre-create the default destination file

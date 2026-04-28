@@ -1,8 +1,6 @@
-import type { Plugin } from 'vite';
 import { spawn } from 'child_process';
 import { createConnection } from 'net';
 import { fileURLToPath } from 'url';
-import { addOidsToAst, getAstFromContent, getContentFromAst } from '@visual-edit/parser';
 
 const BRIDGE_PORT = 5179;
 
@@ -34,25 +32,31 @@ function ensureBridge(): void {
     }).catch(() => { bridgeStarted = false; });
 }
 
-export function visualEditPlugin(): Plugin {
+type NextConfig = Record<string, unknown>;
+type WebpackOptions = { dev: boolean; isServer: boolean; nextRuntime?: string };
+
+export function withVisualEdit(nextConfig: NextConfig = {}): NextConfig {
     return {
-        name: 'visual-edit:inject-oids',
-        enforce: 'pre',
-        configureServer() {
-            ensureBridge();
-        },
-        transform(code, id) {
-            if (!/\.(tsx|jsx)$/.test(id)) return null;
-            if (id.includes('node_modules')) return null;
+        ...nextConfig,
+        webpack(config: any, options: WebpackOptions) {
+            // Start bridge once, on the first server-side dev compilation (not edge/client)
+            if (options.dev && options.isServer && options.nextRuntime !== 'edge') {
+                ensureBridge();
+            }
 
-            const ast = getAstFromContent(code);
-            if (!ast) return null;
+            // Inject OID loader
+            const loaderPath = fileURLToPath(new URL('./next-loader.js', import.meta.url));
+            config.module.rules.unshift({
+                test: /\.(tsx|jsx)$/,
+                exclude: /node_modules/,
+                use: [loaderPath],
+            });
 
-            const { ast: modified, modified: changed } = addOidsToAst(ast);
-            if (!changed) return null;
-
-            const newCode = getContentFromAst(modified, code);
-            return { code: newCode, map: null };
+            const upstream = (nextConfig as any).webpack;
+            if (typeof upstream === 'function') {
+                return upstream(config, options);
+            }
+            return config;
         },
     };
 }

@@ -960,10 +960,10 @@ export function duplicateComponent(
 
     const content = readFileSync(sourceFilePath, 'utf-8');
 
-    // Rewrite relative imports for the new file location
     const ast = getAstFromContent(content);
     if (!ast) return { ok: false, error: 'Could not parse source component' };
 
+    // Rewrite relative imports for the new file location
     for (const statement of ast.program.body) {
         if (!t.isImportDeclaration(statement)) continue;
         const src = String(statement.source.value);
@@ -971,13 +971,29 @@ export function duplicateComponent(
         statement.source = t.stringLiteral(rewriteImportSource(src, sourceFilePath, newFilePath));
     }
 
-    const rewrittenContent = getContentFromAst(ast, content);
-
-    // Rename the primary export symbol (and its Props interface) via word-boundary replace
+    // Rename exported symbol and its Props type — but NEVER touch import specifiers.
+    // A regex over the source text is wrong here: `\bCalendar\b` matches the imported
+    // name in `import { Calendar as AriaCalendar }`, turning AriaCalendar into undefined.
+    // Instead we traverse the AST and skip any identifier whose binding was created by
+    // an import declaration (binding.kind === 'module').
     const sourceBase = basename(sourceFilePath, extname(sourceFilePath));
-    const renamedContent = rewrittenContent
-        .replace(new RegExp(`\\b${sourceBase}Props\\b`, 'g'), `${componentName}Props`)
-        .replace(new RegExp(`\\b${sourceBase}\\b`, 'g'), componentName);
+    const propsName = `${sourceBase}Props`;
+    const newPropsName = `${componentName}Props`;
+
+    traverse(ast, {
+        Identifier(nodePath) {
+            const { name } = nodePath.node;
+            if (name !== sourceBase && name !== propsName) return;
+            // Never touch the imported-name side of an import specifier
+            if (nodePath.findParent(p => p.isImportDeclaration())) return;
+            // Skip bindings created by an import (kind === 'module')
+            const binding = nodePath.scope.getBinding(name);
+            if (binding && binding.kind === 'module') return;
+            nodePath.node.name = name === propsName ? newPropsName : componentName;
+        },
+    });
+
+    const renamedContent = getContentFromAst(ast, content);
 
     try {
         mkdirSync(dirname(newFilePath), { recursive: true });

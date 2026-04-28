@@ -12,7 +12,7 @@ export interface ComponentInfo {
     origin: ComponentOrigin; // whether it was created by visual-edit or is a pre-existing project file
 }
 
-const IGNORE_DIRS = new Set(['node_modules', '.next', 'dist', '.git', 'build', 'out', '.turbo', '.cache', 'public']);
+const IGNORE_DIRS = new Set(['node_modules', '.next', 'dist', '.git', 'build', 'out', '.turbo', '.cache', 'public', 'visual-edit-kit-component-preview']);
 
 /** Path segment that marks components created by visual-edit browser flows. */
 const VISUAL_EDIT_SEGMENT = `${sep}visual-edit${sep}`;

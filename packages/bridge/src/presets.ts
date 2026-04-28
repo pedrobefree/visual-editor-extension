@@ -190,7 +190,7 @@ export function createPreset(
         idx += 1;
     }
 
-    const source = `import React from 'react';\n\n${generator(componentName)}`;
+    const source = generator(componentName);
 
     try {
         mkdirSync(dirname(newFilePath), { recursive: true });
