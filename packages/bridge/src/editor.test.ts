@@ -285,6 +285,87 @@ export const LandingPage = () => {
         expect(pageContent).toContain('className="w-full h-full object-cover rounded-xl"');
     }));
 
+    test('persists instance-scoped class edits for nested elements in components without props yet', () => withProject(root => {
+        const cardFile = write(root, 'components/FeatureCard.tsx', `export function FeatureCard() {
+  return (
+    <div>
+      <img className="w-24 h-24 object-contain" src="/logo.png" alt="Logo" />
+    </div>
+  );
+}
+`);
+        const pageFile = write(root, 'app/Page.tsx', `import { FeatureCard } from "../components/FeatureCard";
+
+export default function Page() {
+  return (
+    <section>
+      <FeatureCard />
+      <FeatureCard />
+    </section>
+  );
+}
+`);
+
+        const result = applyEdit(
+            findOpeningLoc(cardFile, 'img'),
+            {
+                oid: 'feature-card-image',
+                kind: 'class',
+                payload: 'w-full h-full object-cover rounded-xl',
+                scope: 'instance',
+                instanceIndex: 0,
+                instanceCount: 2,
+                sourceFileHints: [pageFile],
+                isComponentRoot: false,
+            },
+            root,
+        );
+
+        expect(result.ok).toBe(true);
+        const nextCard = readFileSync(cardFile, 'utf-8');
+        const nextPage = readFileSync(pageFile, 'utf-8');
+        expect(nextCard).toContain('veFeaturecardimageClassName');
+        expect(nextCard).toContain('className={veFeaturecardimageClassName || "w-24 h-24 object-contain"}');
+        expect(nextPage).toContain('<FeatureCard veFeaturecardimageClassName="w-full h-full object-cover rounded-xl" />');
+        expect(nextPage).toContain('<FeatureCard />');
+    }));
+
+    test('keeps page-local class edits inside app router pages even when layout hints are present', () => withProject(root => {
+        const layoutFile = write(root, 'app/(marketing)/layout.tsx', `export default function MarketingLayout({ children }: { children: React.ReactNode }) {
+  return <div className="layout-shell">{children}</div>;
+}
+`);
+        const pageFile = write(root, 'app/(marketing)/test-page-1/page.tsx', `export default function TestPage1Page() {
+  return (
+    <main className="min-h-screen px-4 py-16">
+      <div className="mx-auto flex max-w-5xl flex-col gap-6">
+        <img className="h-full w-auto object-contain" src="/favicon-befree.png" alt="Imagem de teste" />
+      </div>
+    </main>
+  );
+}
+`);
+
+        const result = applyEdit(
+            findOpeningLoc(pageFile, 'img'),
+            {
+                oid: 'page-image',
+                kind: 'class',
+                payload: 'h-full w-auto object-contain max-w-xs self-center self-end',
+                scope: 'instance',
+                instanceIndex: 0,
+                instanceCount: 1,
+                sourceFileHints: [layoutFile],
+                isComponentRoot: false,
+            },
+            root,
+        );
+
+        expect(result.ok).toBe(true);
+        expect(readFileSync(pageFile, 'utf-8')).toContain('className="h-full w-auto object-contain max-w-xs self-center self-end"');
+        expect(readFileSync(layoutFile, 'utf-8')).toContain('layout-shell');
+    }));
+
     test('refuses to remove a nested element inside a reused component instance', () => withProject(root => {
         const cardFile = write(root, 'components/FeatureCard.tsx', `export function FeatureCard() {
   return (

@@ -58,6 +58,7 @@ export interface MovePayload {
 
 export interface ComponentizePayload {
     name: string;
+    destinationDir?: string;
 }
 
 export interface InsertComponentPayload {
@@ -101,6 +102,18 @@ function orderedSourceFiles(projectRoot: string, hints?: string[]): string[] {
         ...uniqueHints.filter(file => files.includes(file)),
         ...files.filter(file => !uniqueHints.includes(file)),
     ];
+}
+
+function normalizePathForMatch(filePath: string): string {
+    return filePath.split(sep).join('/');
+}
+
+function isRouteEntryFile(filePath: string): boolean {
+    const normalized = normalizePathForMatch(filePath);
+    if (/(^|\/)(app|src\/app)\/.*\/(page|layout|template|loading|error|default)\.(tsx|jsx)$/.test(normalized)) return true;
+    if (/(^|\/)(app|src\/app)\/not-found\.(tsx|jsx)$/.test(normalized)) return true;
+    if (/(^|\/)(pages|src\/pages)\//.test(normalized)) return true;
+    return false;
 }
 
 export interface EditResult {
@@ -473,7 +486,7 @@ function nodeReferencesIdentifier(node: T.JSXElement, identifier: string): boole
 }
 
 function isTopLevelComponentRenderNode(nodePath: NonNullable<ReturnType<typeof findNodePathByPosition>>): boolean {
-    let current = nodePath.parentPath;
+    let current: typeof nodePath.parentPath | null = nodePath.parentPath;
     while (current) {
         if (current.isJSXElement() || current.isJSXFragment()) return false;
         current = current.parentPath;
@@ -712,6 +725,7 @@ export function applyEdit(loc: OidLocation, req: EditRequest, projectRoot = ''):
             };
         }
         const needsInstanceClassOverride = isInstanceScope &&
+            !isRouteEntryFile(filePath) &&
             (((req.sourceFileHints?.length ?? 0) > 0) ||
             ((req.instanceCount ?? 1) > 1) ||
             !!req.isComponentRoot);

@@ -46,7 +46,7 @@ function classNameAttr(opening: T.JSXOpeningElement): T.JSXAttribute | undefined
     ) as T.JSXAttribute | undefined;
 }
 
-function setClassNameToSlotProp(node: T.JSXElement, propName: string): void {
+function setClassNameToSlotProp(node: T.JSXElement, propExpression: T.Expression): void {
     const attr = classNameAttr(node.openingElement);
     const fallback = attr?.value
         ? t.isStringLiteral(attr.value)
@@ -56,7 +56,7 @@ function setClassNameToSlotProp(node: T.JSXElement, propName: string): void {
                 : t.stringLiteral('')
         : t.stringLiteral('');
     const value = t.jsxExpressionContainer(
-        t.logicalExpression('||', t.identifier(propName), fallback as T.Expression),
+        t.logicalExpression('||', propExpression, fallback as T.Expression),
     );
     if (attr) attr.value = value;
     else node.openingElement.attributes.push(t.jsxAttribute(t.jsxIdentifier('className'), value));
@@ -94,7 +94,46 @@ function addOptionalStringPropToInterface(ast: T.File, componentName: string, pr
             path.node.body.body.push(signature);
             path.stop();
         },
+        TSTypeAliasDeclaration(path) {
+            if (!candidates.has(path.node.id.name)) return;
+            if (!t.isTSTypeLiteral(path.node.typeAnnotation)) return;
+            if (path.node.typeAnnotation.members.some(member =>
+                t.isTSPropertySignature(member) &&
+                t.isIdentifier(member.key) &&
+                member.key.name === propName
+            )) return;
+
+            const signature = t.tsPropertySignature(
+                t.identifier(propName),
+                t.tsTypeAnnotation(t.tsStringKeyword()),
+            );
+            signature.optional = true;
+            path.node.typeAnnotation.members.push(signature);
+            path.stop();
+        },
     });
+}
+
+function ensureIdentifierParamType(identifier: T.Identifier, propName: string): void {
+    const signature = t.tsPropertySignature(
+        t.identifier(propName),
+        t.tsTypeAnnotation(t.tsStringKeyword()),
+    );
+    signature.optional = true;
+
+    if (!identifier.typeAnnotation || !t.isTSTypeAnnotation(identifier.typeAnnotation)) {
+        identifier.typeAnnotation = t.tsTypeAnnotation(t.tsTypeLiteral([signature]));
+        return;
+    }
+
+    const typeAnnotation = identifier.typeAnnotation.typeAnnotation;
+    if (!t.isTSTypeLiteral(typeAnnotation)) return;
+    if (typeAnnotation.members.some(member =>
+        t.isTSPropertySignature(member) &&
+        t.isIdentifier(member.key) &&
+        member.key.name === propName
+    )) return;
+    typeAnnotation.members.push(signature);
 }
 
 function componentFunctionFromDeclarator(init: T.Expression | null | undefined): T.FunctionExpression | T.ArrowFunctionExpression | null {
@@ -142,11 +181,24 @@ export function enableSlotClassOverride(ast: T.File, targetNode: T.JSXElement, p
             if (!componentName || !functionNode) return;
 
             const firstParam = functionNode.params[0];
-            if (t.isObjectPattern(firstParam)) addPropToPattern(firstParam, propName);
-            else return;
+            let propExpression: T.Expression;
+            if (!firstParam) {
+                functionNode.params[0] = t.objectPattern([
+                    t.objectProperty(t.identifier(propName), t.identifier(propName), false, true),
+                ]);
+                propExpression = t.identifier(propName);
+            } else if (t.isObjectPattern(firstParam)) {
+                addPropToPattern(firstParam, propName);
+                propExpression = t.identifier(propName);
+            } else if (t.isIdentifier(firstParam)) {
+                ensureIdentifierParamType(firstParam, propName);
+                propExpression = t.memberExpression(t.identifier(firstParam.name), t.identifier(propName));
+            } else {
+                return;
+            }
 
             addOptionalStringPropToInterface(ast, componentName, propName);
-            setClassNameToSlotProp(path.node, propName);
+            setClassNameToSlotProp(path.node, propExpression);
             changed = true;
             path.stop();
         },

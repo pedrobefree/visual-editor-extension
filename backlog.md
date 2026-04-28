@@ -31,16 +31,17 @@ Os recursos abaixo passam a ser tratados como implementados nesta fase de planej
 4. Mover elementos por drag and drop
 5. Duplicar elemento ou bloco
 
-### Recurso em consolidacao (ciclo atual concluido)
+### Recursos considerados implementados neste ciclo
 
 6. Criar novos componentes/blocos pelo browser
+7. Criar novas paginas pela extensao
 
 ### Recursos ainda 100% pendentes
 
-7. Conversor de elementos externos em componente React
-8. Importar componentes, blocos e charts de bibliotecas como Shadcn
-9. Interface para aplicacao de animacoes
-10. Ferramentas extras tipo TWColor
+8. Conversor de elementos externos em componente React
+9. Importar componentes, blocos e charts de bibliotecas como Shadcn
+10. Interface para aplicacao de animacoes
+11. Ferramentas extras tipo TWColor
 
 ## Roadmap Reorganizado
 
@@ -97,7 +98,7 @@ Escopo macro:
 
 Status:
 
-- parcialmente implementado
+- funcional para fins de roadmap
 
 Motivo da prioridade:
 
@@ -105,7 +106,29 @@ Motivo da prioridade:
 - entrega valor alto sem abrir a complexidade de ingestao externa
 - destrava a futura importacao de blocos/bibliotecas
 
-### Fase D - Ingestao externa e importacao assistida
+### Fase D - Autoria de paginas pelo browser
+
+Objetivo:
+
+- permitir criar uma nova rota/pagina diretamente pela extensao e continuar a composicao visual dentro dela
+
+Escopo macro:
+
+- detectar App Router ou Pages Router automaticamente
+- expor para a extensao os padroes de pasta e route groups encontrados
+- criar a pagina inicial no destino correto do projeto
+- navegar para a rota criada para continuar montando com elementos e componentes
+
+Status:
+
+- funcional para fins de roadmap
+
+Observacoes:
+
+- precisa funcionar para `app/`, `src/app/`, `pages/` e `src/pages/`
+- em App Router com route groups, o bridge deve refletir essa estrutura para a extensao
+
+### Fase E - Ingestao externa e importacao assistida
 
 Objetivo:
 
@@ -123,9 +146,9 @@ Status:
 Observacoes:
 
 - esta fase exige pipeline nova de captura, normalizacao e persistencia
-- deve vir depois da consolidacao da Fase C
+- deve vir depois da consolidacao das Fases C e D
 
-### Fase E - Ferramentas de produtividade visual
+### Fase F - Ferramentas de produtividade visual
 
 Objetivo:
 
@@ -223,7 +246,7 @@ Pendencias movidas para QA:
 
 ### 6. Criar novos componentes/blocos pelo browser
 
-Status: `Parcialmente implementado`
+Status: `Implementado para roadmap`
 
 Ja existe:
 
@@ -242,7 +265,23 @@ Concluido neste ciclo:
 - [x] biblioteca local diferencia componentes criados pelo browser (badge + secao separada)
 - [x] builder MVP por presets: Section, Card, Hero, Feature Grid, CTA
 
-### 7. Conversor de elementos externos em componente React
+### 7. Criar novas paginas pela extensao
+
+Status: `Implementado para roadmap`
+
+Ja existe:
+
+- deteccao automatica de `app/`, `src/app/`, `pages/` e `src/pages/`
+- deteccao de route groups do App Router e exposicao desses padroes para a extensao
+- criacao de pagina nova no destino compativel com a estrutura do projeto
+- navegacao para a rota criada para continuar a edicao visual
+
+Pendencias movidas para QA:
+
+- validar criacao em projetos com App Router e Pages Router coexistindo
+- revisar feedback visual para rota duplicada ou invalida
+
+### 8. Conversor de elementos externos em componente React
 
 Status: `Backlog de descoberta`
 
@@ -260,7 +299,7 @@ Desafios:
 - adaptacao ao stack do projeto atual
 - tratamento de assets externos
 
-### 8. Importar componentes, blocos e charts de bibliotecas como Shadcn
+### 9. Importar componentes, blocos e charts de bibliotecas como Shadcn
 
 Status: `Backlog de descoberta`
 
@@ -277,7 +316,7 @@ Pontos a definir:
 - preview antes da insercao
 - tratamento de imports, dependencias e conflitos de nome
 
-### 9. Interface para aplicacao de animacoes
+### 10. Interface para aplicacao de animacoes
 
 Status: `Backlog`
 
@@ -294,7 +333,7 @@ Pontos a definir:
 - preview no DOM antes de aplicar
 - conflitos com classes existentes
 
-### 10. Ferramentas extras tipo TWColor
+### 11. Ferramentas extras tipo TWColor
 
 Status: `Backlog`
 
@@ -315,33 +354,33 @@ Escopo posterior:
 
 ### Prioridade atual
 
-Consolidar o recurso 6: `Criar novos componentes/blocos pelo browser`.
+Iniciar a Fase E: `Ingestao externa e importacao assistida`.
+
+Gate das Fases C e D: concluido. Os milestones de componentes/blocos e de criacao de paginas ja foram entregues para roadmap.
 
 Racional:
 
-- e a frente com melhor relacao entre valor entregue e risco tecnico
-- reutiliza parser, bridge e extensao ja existentes
-- evita abrir cedo demais a complexidade de ingestao externa
-- cria a base certa para Shadcn, blocos importados e conversor externo
+- a base de componentizacao, derivacao, biblioteca local e criacao de paginas esta estavel
+- Shadcn e o conversor externo sao os proximos pontos de maior valor percebido
+- a pipeline de captura e normalizacao externa e o novo risco tecnico a explorar
+- recomendado comecar pelo Recurso 9 (Shadcn) por ter escopo mais controlado que o Recurso 8
 
 ### Objetivo do proximo ciclo
 
-Transformar a componentizacao atual em um fluxo real de autoria de componentes/blocos.
+Permitir que o usuario traga componentes/blocos de bibliotecas externas para dentro do projeto atual, com insercao assistida e adaptacao minima ao stack do projeto.
 
-### Escopo sugerido para o proximo ciclo
+### Escopo sugerido para o proximo ciclo (Recurso 9 - Shadcn)
 
-1. Escolha de pasta/destino ao criar componente
-2. Duplicar componente existente antes de editar
-3. Definir acao de "salvar como bloco" ou "criar variacao"
-4. Melhorar a biblioteca local para destacar componentes criados pelo browser
-5. Criar um MVP de construtor baseado em presets locais
+1. Listar componentes disponiveis no Shadcn CLI
+2. Instalar o componente escolhido via CLI no projeto do usuario
+3. Confirmar instalacao e exibir o componente na biblioteca local da extensao
+4. Permitir insercao direta do componente instalado na pagina atual
 
 ### Fora do escopo imediato
 
-- conversao de UI externa por URL
-- importacao de bibliotecas como Shadcn
-- builder avancado de animacoes
-- ferramentas visuais extras
+- conversor por URL + selector (Recurso 8) - pipeline mais complexa, fica para depois
+- builder avancado de animacoes (Recurso 10)
+- ferramentas visuais extras (Recurso 11)
 
 ## Plano Sugerido por Milestone
 
@@ -546,7 +585,7 @@ Casos minimos para validar ao fim do ciclo:
 - criar uma variacao sem alterar o componente original
 - inserir um preset simples como `Card` ou `Section` e continuar editando pelo browser
 
-### Dependencias para iniciar a Fase D
+### Dependencias para iniciar a Fase E
 
 A frente de importacao externa so deve comecar quando este ciclo estiver estavel em:
 
@@ -554,6 +593,7 @@ A frente de importacao externa so deve comecar quando este ciclo estiver estavel
 - derivacao segura de componente existente
 - biblioteca local atualizando corretamente
 - insercao e reutilizacao de blocos criados pelo browser
+- criacao de paginas respeitando App Router, Pages Router e route groups
 
 ## Plano de Execucao Detalhado
 
@@ -636,45 +676,45 @@ Objetivo:
 
 #### Checklist tecnico - Parser
 
-- [ ] definir o que pode ser reaproveitado da extracao atual versus o que precisa de fluxo proprio para derivacao
-- [ ] garantir que qualquer JSX derivado nao carregue `data-oid` indevido no arquivo salvo
-- [ ] revisar compatibilidade com imports e props em componentes derivados
-- [ ] adicionar testes cobrindo derivacao de componente simples e componente com imports locais
+- [x] definir o que pode ser reaproveitado da extracao atual versus o que precisa de fluxo proprio para derivacao
+- [x] garantir que qualquer JSX derivado nao carregue `data-oid` indevido no arquivo salvo
+- [x] revisar compatibilidade com imports e props em componentes derivados
+- [x] adicionar testes cobrindo derivacao de componente simples e componente com imports locais
 
 #### Checklist tecnico - Bridge
 
-- [ ] criar operacao nova para duplicar componente existente em novo arquivo
-- [ ] resolver como identificar o componente-fonte:
-- [ ] por `filePath`
-- [ ] por nome + path relativo
-- [ ] copiar conteudo e reescrever imports relativos quando o destino mudar
-- [ ] garantir nome novo sem colisao
-- [ ] reindexar componentes apos a derivacao
-- [ ] retornar metadados completos do novo componente
-- [ ] adicionar testes para:
-- [ ] derivar componente no mesmo diretório
-- [ ] derivar componente em subpasta diferente
-- [ ] preservar funcionamento de imports relativos
-- [ ] garantir que o original nao foi alterado
+- [x] criar operacao nova para duplicar componente existente em novo arquivo
+- [x] resolver como identificar o componente-fonte:
+- [x] por `filePath`
+- [x] por nome + path relativo
+- [x] copiar conteudo e reescrever imports relativos quando o destino mudar
+- [x] garantir nome novo sem colisao
+- [x] reindexar componentes apos a derivacao
+- [x] retornar metadados completos do novo componente
+- [x] adicionar testes para:
+- [x] derivar componente no mesmo diretório
+- [x] derivar componente em subpasta diferente
+- [x] preservar funcionamento de imports relativos
+- [x] garantir que o original nao foi alterado
 
 #### Checklist tecnico - Extension
 
-- [ ] adicionar acao de `duplicar como novo componente` no painel de componentes
-- [ ] abrir modal com nome e destino do novo componente
-- [ ] permitir seguir direto para insercao ou edicao da nova variacao
-- [ ] destacar visualmente que se trata de uma derivacao
-- [ ] atualizar lista local sem refresh manual
+- [x] adicionar acao de `duplicar como novo componente` no painel de componentes
+- [x] abrir modal com nome e destino do novo componente
+- [x] permitir seguir direto para insercao ou edicao da nova variacao
+- [x] destacar visualmente que se trata de uma derivacao
+- [x] atualizar lista local sem refresh manual
 
 #### Validacao manual - Milestone 2
 
-- [ ] duplicar um componente existente e salvar com nome novo
-- [ ] confirmar que o componente original nao mudou
-- [ ] inserir a variacao criada na pagina atual
-- [ ] editar a variacao inserida e confirmar que o original continua intacto
+- [x] duplicar um componente existente e salvar com nome novo
+- [x] confirmar que o componente original nao mudou
+- [x] inserir a variacao criada na pagina atual
+- [x] editar a variacao inserida e confirmar que o original continua intacto
 
 #### Criterio de pronto - Milestone 2
 
-- [ ] usuario consegue derivar componente existente com seguranca e reutilizar a copia no fluxo normal
+- [x] usuario consegue derivar componente existente com seguranca e reutilizar a copia no fluxo normal
 
 ### Milestone 3 - Biblioteca local de componentes/blocos
 
@@ -691,27 +731,27 @@ Objetivo:
 
 #### Checklist tecnico - Bridge
 
-- [ ] expandir o endpoint de componentes para devolver metadados de origem e tipo quando disponiveis
-- [ ] marcar componentes gerados pelo fluxo visual sempre que isso puder ser inferido de forma confiavel
-- [ ] devolver informacoes suficientes para agrupamento no painel
+- [x] expandir o endpoint de componentes para devolver metadados de origem e tipo quando disponiveis
+- [x] marcar componentes gerados pelo fluxo visual sempre que isso puder ser inferido de forma confiavel
+- [x] devolver informacoes suficientes para agrupamento no painel
 
 #### Checklist tecnico - Extension
 
-- [ ] agrupar ou rotular componentes do projeto versus componentes criados visualmente
-- [ ] agrupar ou rotular variacoes derivadas
-- [ ] adicionar ordenacao priorizando componentes criados recentemente ou criados visualmente
-- [ ] adicionar acoes de insercao rapida para componentes recem-criados
-- [ ] evitar poluir a interface com controles excessivos
+- [x] agrupar ou rotular componentes do projeto versus componentes criados visualmente
+- [x] agrupar ou rotular variacoes derivadas
+- [x] adicionar ordenacao priorizando componentes criados recentemente ou criados visualmente
+- [x] adicionar acoes de insercao rapida para componentes recem-criados
+- [x] evitar poluir a interface com controles excessivos
 
 #### Validacao manual - Milestone 3
 
-- [ ] criar componente novo e confirmar destaque na biblioteca
-- [ ] derivar componente e confirmar destaque como variacao
-- [ ] inserir rapidamente um item da biblioteca apos cria-lo
+- [x] criar componente novo e confirmar destaque na biblioteca
+- [x] derivar componente e confirmar destaque como variacao
+- [x] inserir rapidamente um item da biblioteca apos cria-lo
 
 #### Criterio de pronto - Milestone 3
 
-- [ ] biblioteca local funciona como ponto central de criacao, derivacao e reutilizacao
+- [x] biblioteca local funciona como ponto central de criacao, derivacao e reutilizacao
 
 ### Milestone 4 - Builder MVP por presets
 
@@ -727,37 +767,37 @@ Objetivo:
 
 #### Checklist tecnico - Parser
 
-- [ ] definir estrutura JSX inicial para cada preset MVP
-- [ ] garantir compatibilidade com a logica atual de insercao e componentizacao
-- [ ] adicionar testes de geracao para presets escolhidos
+- [x] definir estrutura JSX inicial para cada preset MVP
+- [x] garantir compatibilidade com a logica atual de insercao e componentizacao
+- [x] adicionar testes de geracao para presets escolhidos
 
 #### Checklist tecnico - Bridge
 
-- [ ] definir payload de criacao por preset
-- [ ] gerar arquivo do componente com base no preset
-- [ ] inserir instancia do novo componente no alvo selecionado
-- [ ] indexar o novo componente e devolver metadados para a extensao
-- [ ] adicionar testes para:
-- [ ] criar preset `Section`
-- [ ] criar preset `Card`
-- [ ] criar preset `Hero`
+- [x] definir payload de criacao por preset
+- [x] gerar arquivo do componente com base no preset
+- [x] inserir instancia do novo componente no alvo selecionado
+- [x] indexar o novo componente e devolver metadados para a extensao
+- [x] adicionar testes para:
+- [x] criar preset `Section`
+- [x] criar preset `Card`
+- [x] criar preset `Hero`
 
 #### Checklist tecnico - Extension
 
-- [ ] criar UX minima para selecionar preset, nome e destino
-- [ ] permitir inserir o bloco no elemento/container selecionado
-- [ ] mostrar preview textual simples do preset escolhido
-- [ ] reaproveitar ao maximo os fluxos de nome/destino ja feitos nas milestones anteriores
+- [x] criar UX minima para selecionar preset, nome e destino
+- [x] permitir inserir o bloco no elemento/container selecionado
+- [x] mostrar preview textual simples do preset escolhido
+- [x] reaproveitar ao maximo os fluxos de nome/destino ja feitos nas milestones anteriores
 
 #### Validacao manual - Milestone 4
 
-- [ ] criar um `Card` em um container selecionado
-- [ ] criar uma `Section` em uma pagina vazia
-- [ ] criar um `Hero`, confirmar arquivo gerado e reinsercao pela biblioteca
+- [x] criar um `Card` em um container selecionado
+- [x] criar uma `Section` em uma pagina vazia
+- [x] criar um `Hero`, confirmar arquivo gerado e reinsercao pela biblioteca
 
 #### Criterio de pronto - Milestone 4
 
-- [ ] usuario consegue criar blocos/componentes iniciais pelo browser sem depender de uma selecao existente
+- [x] usuario consegue criar blocos/componentes iniciais pelo browser sem depender de uma selecao existente
 
 ### Ordem detalhada de implementacao
 
@@ -771,23 +811,23 @@ Objetivo:
 
 #### Sprint 2
 
-- [ ] implementar endpoint/acao de derivacao de componente existente
-- [ ] adaptar painel de componentes para expor a nova acao
-- [ ] cobrir testes de copia e reescrita de imports
-- [ ] validar manualmente Milestone 2
+- [x] implementar endpoint/acao de derivacao de componente existente
+- [x] adaptar painel de componentes para expor a nova acao
+- [x] cobrir testes de copia e reescrita de imports
+- [x] validar manualmente Milestone 2
 
 #### Sprint 3
 
-- [ ] enriquecer metadados do catalogo local de componentes
-- [ ] melhorar agrupamento, labels e insercao rapida no painel
-- [ ] validar manualmente Milestone 3
+- [x] enriquecer metadados do catalogo local de componentes
+- [x] melhorar agrupamento, labels e insercao rapida no painel
+- [x] validar manualmente Milestone 3
 
 #### Sprint 4
 
-- [ ] definir presets MVP
-- [ ] implementar criacao por preset no bridge/parser
-- [ ] adaptar UX da extensao para criar bloco por preset
-- [ ] validar manualmente Milestone 4
+- [x] definir presets MVP
+- [x] implementar criacao por preset no bridge/parser
+- [x] adaptar UX da extensao para criar bloco por preset
+- [x] validar manualmente Milestone 4
 
 ### Arquivos provaveis a tocar
 
@@ -809,16 +849,16 @@ Objetivo:
 - [ ] `packages/extension/src/components-panel.ts`
 - [ ] arquivos de UI/modal relacionados ao fluxo de componentizacao
 
-### Gate final antes de abrir Fase D
+### Gate final antes de abrir Fase E
 
 Todos os itens abaixo precisam estar marcados:
 
-- [ ] Milestone 1 concluida
-- [ ] Milestone 2 concluida
-- [ ] Milestone 3 concluida
-- [ ] Milestone 4 concluida
-- [ ] fluxo de criacao e derivacao validado manualmente
-- [ ] biblioteca local funcionando como ponto de reutilizacao
+- [x] Milestone 1 concluida
+- [x] Milestone 2 concluida
+- [x] Milestone 3 concluida
+- [x] Milestone 4 concluida
+- [x] fluxo de criacao e derivacao validado manualmente
+- [x] biblioteca local funcionando como ponto de reutilizacao
 
 ## Dependencias Tecnicas por Camada
 
@@ -850,9 +890,10 @@ Todos os itens abaixo precisam estar marcados:
 
 ## Criterio de Avanco para a Proxima Fase
 
-A Fase D so deve comecar quando a Fase C estiver suficientemente estavel nestes pontos:
+A Fase E so deve comecar quando as Fases C e D estiverem suficientemente estaveis nestes pontos:
 
 - criar componente pelo browser com fluxo previsivel
 - reinserir componente criado sem friccao
 - duplicar/derivar bloco existente com seguranca
 - biblioteca local de componentes funcionando como base de reutilizacao
+- criar pagina nova no destino correto e continuar a edicao visual nela

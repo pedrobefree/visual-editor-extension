@@ -117,6 +117,12 @@ bun run build.ts
 # Carregue a pasta dist/ no Chrome em chrome://extensions
 ```
 
+### Workflow de desenvolvimento
+
+- Ao implementar qualquer funcionalidade ou correcao de bug que afete bridge, parser, setup ou extensao, gere novamente os builds locais antes de testar.
+- Para a extensao, sempre recarregue a pasta `packages/extension/dist/` no Chrome apos o build.
+- Se a mudanca precisa chegar ao pacote publicado no npm, atualize tambem o build de `packages/befree-visual-edit/` e sinalize a necessidade de bump de versao antes do publish.
+
 ### Build do pacote npm
 
 ```bash

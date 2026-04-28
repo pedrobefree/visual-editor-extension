@@ -25,6 +25,14 @@ interface ComponentPresence {
     count: number;
 }
 
+interface PagePattern {
+    id: string;
+    kind: 'app' | 'pages';
+    label: string;
+    routeGroup?: string;
+    isDefault?: boolean;
+}
+
 function attrSelectorValue(value: string): string {
     return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
@@ -121,6 +129,7 @@ const CSS = `
 .icon-btn.create-btn:hover { color: white; border-color: #6366f1; background: #1e1b4b; }
 .icon-btn.create-btn.active { color: white; border-color: #6366f1; background: #1e1b4b; }
 .section-label { padding: 8px 12px 4px; color: #555; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; border-bottom: 1px solid #1a1a1a; }
+#preset-form .preset-help { color: #666; font-size: 10px; line-height: 1.4; }
 #empty { padding: 28px; text-align: center; color: #444; font-size: 11px; line-height: 1.6; }
 .state-msg { padding: 28px; text-align: center; font-size: 11px; line-height: 1.6; }
 .state-loading { color: #555; }
@@ -135,6 +144,7 @@ export interface ComponentsPanelCallbacks {
     onOpenPreview: (path: string, componentName: string) => void;
     /** Called in insertion mode when the user picks a component to insert. */
     onInsertComponent?: (component: ComponentInfo) => void;
+    onPageCreated?: (routePath: string) => void;
     onClose?: () => void;
     mode?: 'browse' | 'insert';
 }
@@ -156,8 +166,10 @@ export class ComponentsPanel {
     private mode: 'browse' | 'insert';
     private deleteFilePath: string | null = null;
     private duplicateFilePath: string | null = null;
-    private showPresetForm = false;
+    private showCreateForm = false;
+    private createMode: 'preset' | 'page' = 'preset';
     private presets: Array<{ kind: string; label: string; description: string }> = [];
+    private pagePatterns: PagePattern[] = [];
 
     constructor(callbacks: ComponentsPanelCallbacks) {
         this.callbacks = callbacks;
@@ -205,6 +217,7 @@ export class ComponentsPanel {
             const [compRes] = await Promise.all([
                 fetch(`${BRIDGE}/components`, { signal: AbortSignal.timeout(5000) }),
                 this.loadPresets(),
+                this.loadPagePatterns(),
             ]);
             const data = await compRes.json() as { ok: boolean; components?: ComponentInfo[]; error?: string };
             if (!data.ok || !data.components) { this.renderState('error', data.error); return; }
@@ -315,24 +328,40 @@ export class ComponentsPanel {
         wrapper.innerHTML = `
             <div id="comp-panel">
             <div id="comp-header">
-              <span class="comp-title">${this.mode === 'insert' ? t('componentsInsertTitle') : t('componentsTitle')}</span>
+                <span class="comp-title">${this.mode === 'insert' ? t('componentsInsertTitle') : t('componentsTitle')}</span>
               <div class="comp-header-actions">
                 <span class="comp-count">${this.components.length}</span>
-                ${this.mode !== 'insert' ? `<button class="icon-btn create-btn${this.showPresetForm ? ' active' : ''}" id="comp-create-preset" title="${t('componentsCreatePreset')}">+</button>` : ''}
+                ${this.mode !== 'insert' ? `<button class="icon-btn create-btn${this.showCreateForm ? ' active' : ''}" id="comp-create-preset" title="${t('componentsCreateTitle')}">+</button>` : ''}
                 <button class="icon-btn" id="comp-close" title="${t('componentsClose')}">×</button>
               </div>
             </div>
-            ${this.showPresetForm ? `
+            ${this.showCreateForm ? `
             <div id="preset-form">
+              <div class="preset-row">
+                <select id="create-mode">
+                  <option value="preset"${this.createMode === 'preset' ? ' selected' : ''}>${t('componentsCreateModePreset')}</option>
+                  <option value="page"${this.createMode === 'page' ? ' selected' : ''}>${t('componentsCreateModePage')}</option>
+                </select>
+              </div>
+              ${this.createMode === 'preset' ? `
               <div class="preset-row">
                 <select id="preset-kind">
                   ${this.presets.map(p => `<option value="${p.kind}" title="${p.description}">${p.label}</option>`).join('')}
                 </select>
                 <input id="preset-name" type="text" placeholder="${t('componentsPresetNamePlaceholder')}" spellcheck="false" />
+              </div>` : `
+              <div class="preset-row">
+                <select id="page-pattern">
+                  ${this.pagePatterns.map(pattern => `<option value="${pattern.id}"${pattern.isDefault ? ' selected' : ''}>${pattern.label}</option>`).join('')}
+                </select>
               </div>
+              <div class="preset-row">
+                <input id="page-route" type="text" placeholder="${t('componentsPageRoutePlaceholder')}" spellcheck="false" />
+              </div>
+              <div class="preset-help">${t('componentsPageHelp')}</div>`}
               <div class="preset-actions">
                 <button class="action-btn" id="preset-cancel">${t('componentsDeleteCancel')}</button>
-                <button class="action-btn dup-confirm" id="preset-submit">${t('componentsPresetCreate')}</button>
+                <button class="action-btn dup-confirm" id="preset-submit">${this.createMode === 'preset' ? t('componentsPresetCreate') : t('componentsPageCreate')}</button>
               </div>
             </div>` : ''}
             <div class="search-wrap">
@@ -371,33 +400,56 @@ export class ComponentsPanel {
 
         // Preset form toggle
         this.shadow.querySelector('#comp-create-preset')?.addEventListener('click', () => {
-            this.showPresetForm = !this.showPresetForm;
-            if (this.showPresetForm && !this.presets.length) this.loadPresets();
+            this.showCreateForm = !this.showCreateForm;
+            if (this.showCreateForm && !this.presets.length) this.loadPresets();
+            if (this.showCreateForm && !this.pagePatterns.length) this.loadPagePatterns();
             this.render();
-            if (this.showPresetForm) {
+            if (this.showCreateForm) {
                 requestAnimationFrame(() => {
-                    (this.shadow.querySelector('#preset-name') as HTMLInputElement | null)?.focus();
+                    const selector = this.createMode === 'preset' ? '#preset-name' : '#page-route';
+                    (this.shadow.querySelector(selector) as HTMLInputElement | null)?.focus();
                 });
             }
         });
 
         // Preset form cancel
         this.shadow.querySelector('#preset-cancel')?.addEventListener('click', () => {
-            this.showPresetForm = false;
+            this.showCreateForm = false;
             this.render();
+        });
+
+        this.shadow.querySelector('#create-mode')?.addEventListener('change', (e) => {
+            const value = (e.target as HTMLSelectElement).value === 'page' ? 'page' : 'preset';
+            this.createMode = value;
+            this.render();
+            requestAnimationFrame(() => {
+                const selector = value === 'preset' ? '#preset-name' : '#page-route';
+                (this.shadow.querySelector(selector) as HTMLInputElement | null)?.focus();
+            });
         });
 
         // Preset form submit
         const submitPreset = async () => {
-            const kind = (this.shadow.querySelector('#preset-kind') as HTMLSelectElement | null)?.value;
-            const name = (this.shadow.querySelector('#preset-name') as HTMLInputElement | null)?.value.trim();
-            if (!kind || !name) return;
-            await this.createPresetComponent(kind, name);
+            if (this.createMode === 'preset') {
+                const kind = (this.shadow.querySelector('#preset-kind') as HTMLSelectElement | null)?.value;
+                const name = (this.shadow.querySelector('#preset-name') as HTMLInputElement | null)?.value.trim();
+                if (!kind || !name) return;
+                await this.createPresetComponent(kind, name);
+                return;
+            }
+            const patternId = (this.shadow.querySelector('#page-pattern') as HTMLSelectElement | null)?.value;
+            const route = (this.shadow.querySelector('#page-route') as HTMLInputElement | null)?.value.trim();
+            if (!route) return;
+            await this.createPage(route, patternId);
         };
         this.shadow.querySelector('#preset-submit')?.addEventListener('click', submitPreset);
         (this.shadow.querySelector('#preset-name') as HTMLInputElement | null)?.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') submitPreset();
-            if (e.key === 'Escape') { this.showPresetForm = false; this.render(); }
+            if (e.key === 'Escape') { this.showCreateForm = false; this.render(); }
+        });
+        (this.shadow.querySelector('#page-route') as HTMLInputElement | null)?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') submitPreset();
+            if (e.key === 'Escape') { this.showCreateForm = false; this.render(); }
         });
 
         // Search
@@ -549,10 +601,21 @@ export class ComponentsPanel {
     private async loadPresets(): Promise<void> {
         try {
             const res = await fetch(`${BRIDGE}/presets`, { signal: AbortSignal.timeout(3000) });
-            const data = await res.json() as { ok: boolean; presets?: typeof this.presets };
+            const data = await res.json() as { ok: boolean; presets?: Array<{ kind: string; label: string; description: string }> };
             if (data.ok && data.presets) {
                 this.presets = data.presets;
-                if (this.showPresetForm) this.render();
+                if (this.showCreateForm && this.createMode === 'preset') this.render();
+            }
+        } catch { /* non-critical */ }
+    }
+
+    private async loadPagePatterns(): Promise<void> {
+        try {
+            const res = await fetch(`${BRIDGE}/page-patterns`, { signal: AbortSignal.timeout(3000) });
+            const data = await res.json() as { ok: boolean; patterns?: PagePattern[] };
+            if (data.ok && data.patterns) {
+                this.pagePatterns = data.patterns;
+                if (this.showCreateForm && this.createMode === 'page') this.render();
             }
         } catch { /* non-critical */ }
     }
@@ -576,7 +639,7 @@ export class ComponentsPanel {
                     origin: 'visual-edit',
                 };
                 this.components = [...this.components, newComp];
-                this.showPresetForm = false;
+                this.showCreateForm = false;
                 this.render();
             } else {
                 if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = t('componentsPresetCreate'); }
@@ -584,6 +647,26 @@ export class ComponentsPanel {
         } catch {
             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = t('componentsPresetCreate'); }
         }
+    }
+
+    private async createPage(route: string, patternId?: string): Promise<void> {
+        const submitBtn = this.shadow.querySelector<HTMLButtonElement>('#preset-submit');
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '…'; }
+        try {
+            const res = await fetch(`${BRIDGE}/page-create`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ route, patternId }),
+            });
+            const data = await res.json() as { ok: boolean; routePath?: string; error?: string };
+            if (data.ok && data.routePath) {
+                this.showCreateForm = false;
+                this.render();
+                this.callbacks.onPageCreated?.(data.routePath);
+                return;
+            }
+        } catch { /* ignore and restore below */ }
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = t('componentsPageCreate'); }
     }
 
     private async duplicateComponentFile(sourceFilePath: string, newName: string): Promise<void> {

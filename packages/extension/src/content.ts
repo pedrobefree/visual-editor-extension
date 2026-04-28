@@ -656,6 +656,10 @@ function openComponentsPanel(mode: 'browse' | 'insert' = 'browse'): void {
             window.open(url.toString(), '_blank', 'noopener,noreferrer');
             showPageToast(t('previewOpenedBrowser', { name: componentName }), 'success');
         },
+        onPageCreated: (routePath) => {
+            const url = new URL(routePath, window.location.origin);
+            window.location.assign(url.toString());
+        },
     });
     toolbar?.setComponentsActive(true);
 }

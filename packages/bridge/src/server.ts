@@ -22,6 +22,7 @@ import {
 import { readTheme, writeTheme, type ThemeUpdate } from './theme';
 import { listComponents } from './components';
 import { createPreset, PRESETS, type PresetKind } from './presets';
+import { createPage, listPagePatterns } from './pages';
 import { writeComponentPreview, type ComponentPreviewRequest } from './preview';
 import { listProjectClasses } from './classes';
 import { deleteAsset, listAssets, renameAsset, uploadAsset } from './assets';
@@ -233,6 +234,11 @@ export function startServer(projectRoot: string): void {
         return c.json({ ok: true, presets: PRESETS });
     });
 
+    /** GET /page-patterns — returns detected page router targets */
+    app.get('/page-patterns', (c) => {
+        return c.json({ ok: true, patterns: listPagePatterns(projectRoot) });
+    });
+
     /** POST /preset-create { kind, name, destinationDir? } — creates a preset component file */
     app.post('/preset-create', async (c) => {
         const body = await c.req.json<{ kind?: string; name?: string; destinationDir?: string }>();
@@ -241,6 +247,17 @@ export function startServer(projectRoot: string): void {
         if (!result.ok) return c.json(result, 400);
         if (result.newFilePath) refreshFile(result.newFilePath, index);
         console.log(`[visual-edit] preset-create → ${result.relPath} (${body.kind})`);
+        return c.json(result);
+    });
+
+    /** POST /page-create { route, patternId? } — creates a new app/pages router page */
+    app.post('/page-create', async (c) => {
+        const body = await c.req.json<{ route?: string; patternId?: string }>();
+        if (!body.route) return c.json({ ok: false, error: 'route required' }, 400);
+        const result = createPage(projectRoot, { route: body.route, patternId: body.patternId });
+        if (!result.ok || !result.filePath) return c.json(result, 400);
+        refreshFile(result.filePath, index);
+        console.log(`[visual-edit] page-create → ${result.relPath} (${result.routePath})`);
         return c.json(result);
     });
 

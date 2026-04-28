@@ -142,7 +142,7 @@ function ensureObjectPatternPropType(
     pattern: T.ObjectPattern,
     propName: string,
 ): void {
-    if (!pattern.typeAnnotation) {
+    if (!pattern.typeAnnotation || !t.isTSTypeAnnotation(pattern.typeAnnotation)) {
         pattern.typeAnnotation = t.tsTypeAnnotation(
             t.tsTypeLiteral([optionalStringTypeProperty(propName)]),
         );
@@ -166,7 +166,7 @@ function ensureIdentifierParamPropType(
     identifier: T.Identifier,
     propName: string,
 ): void {
-    if (!identifier.typeAnnotation) {
+    if (!identifier.typeAnnotation || !t.isTSTypeAnnotation(identifier.typeAnnotation)) {
         identifier.typeAnnotation = t.tsTypeAnnotation(
             t.tsTypeLiteral([optionalStringTypeProperty(propName)]),
         );
