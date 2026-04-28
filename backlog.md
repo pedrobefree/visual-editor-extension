@@ -131,7 +131,7 @@ Checklist:
 
 ### 3. Biblioteca de assets do projeto
 
-Status: `Planejado para Fase 2`
+Status: `Parcialmente implementado na Fase 2`
 
 Escopo inicial:
 
@@ -150,15 +150,21 @@ Escopo posterior:
 
 Checklist:
 
-- [ ] Mapear diretorios de assets suportados
-- [ ] Criar leitura/listagem de imagens no bridge
-- [ ] Criar upload de arquivos no bridge
-- [ ] Criar rename com atualizacao de referencias em arquivos TSX/JSX
-- [ ] Criar delete de asset
-- [ ] Criar painel de assets na extensao
-- [ ] Permitir aplicar asset ao elemento selecionado
-- [ ] Permitir atualizar imagem existente
-- [ ] Tratar erros de arquivos ausentes, nome duplicado e extensao invalida
+- [x] Mapear diretorios de assets suportados
+- [x] Criar leitura/listagem de imagens no bridge
+- [x] Criar upload de arquivos no bridge
+- [x] Criar rename com atualizacao de referencias em arquivos TSX/JSX
+- [x] Criar delete de asset
+- [x] Criar painel de assets na extensao
+- [x] Permitir aplicar asset ao elemento selecionado
+- [x] Permitir inserir nova imagem a partir de um asset selecionado
+- [x] Permitir atualizar imagem existente
+- [x] Tratar erros de arquivos ausentes, nome duplicado e extensao invalida
+- [x] Integrar a biblioteca de assets diretamente ao editor de `img` no painel de propriedades, mantendo `src` manual como fallback
+- [x] Substituir dialogs nativos de rename/delete por controles inline no painel
+- [x] Permitir usar imagem por URL/path diretamente pela biblioteca de assets
+- [x] Substituir input manual de `src` por preview da imagem no painel de propriedades
+- [x] Permitir criar atributo `alt` ausente ao salvar propriedades de imagem
 
 ### 4. Mover elementos por drag and drop
 
@@ -182,13 +188,68 @@ Checklist:
 - [x] Definir tipos de acao para `move-element`
 - [x] Adicionar suporte AST para mover por indice
 - [x] Expor endpoint no bridge para move
-- [ ] Adaptar painel de layers para drag and drop
+- [x] Adaptar painel de layers para drag and drop inicial
 - [ ] Atualizar preview visual durante hover de drop
 - [x] Recalcular selecao e overlays apos move
 - [x] Testar reordenacao de siblings no mesmo container
 - [x] Bloquear casos nao suportados com feedback claro
 - [x] Manter elemento selecionado em foco na arvore depois de selecionar ou mover
 - [x] Sincronizar melhor overlay e selecao da arvore apos move
+- [x] Permitir mover elemento para outro container via drag and drop na arvore
+
+### 5. Duplicar elemento ou bloco
+
+Status: `Parcialmente implementado na Fase 3`
+
+Escopo inicial:
+
+- Duplicar o elemento selecionado logo apos ele no mesmo pai
+- Duplicar a subarvore do elemento selecionado
+- Remover `data-oid` do clone para evitar OIDs duplicados no codigo
+- Atualizar arvore/overlays apos a operacao
+
+Checklist:
+
+- [x] Criar primitiva AST de duplicacao de JSXElement
+- [x] Remover OIDs do clone e dos filhos clonados
+- [x] Expor acao `duplicate` no bridge
+- [x] Adicionar botao de duplicacao no painel de estrutura
+- [x] Atualizar checklist da Fase 3
+- [x] Selecionar automaticamente a copia apos refresh/indexacao quando possivel
+- [ ] Validar duplicacao de componentes reutilizados e elementos com props dinamicas
+
+### 6. Criar novos componentes/blocos pelo browser
+
+Status: `Parcialmente implementado na Fase 3`
+
+Escopo inicial:
+
+- Extrair o elemento selecionado para um novo componente React
+- Criar arquivo em `src/components/visual-edit/`
+- Substituir o JSX original por uma instancia do novo componente
+- Adicionar import no arquivo original
+- Cobrir a operacao pelo undo global
+
+Checklist:
+
+- [x] Criar primitiva AST para extrair elemento selecionado
+- [x] Remover `data-oid` da subarvore extraida
+- [x] Gerar arquivo de componente nomeado
+- [x] Inserir import no arquivo original
+- [x] Substituir elemento original por `<Componente />`
+- [x] Expor acao `componentize` no bridge
+- [x] Adicionar acao inicial no painel de estrutura
+- [x] Adicionar teste de extracao no parser
+- [x] Copiar imports usados pela subarvore extraida para o componente gerado
+- [x] Reduzir linhas em branco excessivas geradas ao componentizar
+- [x] Inserir componente existente no elemento/container selecionado
+- [x] Adicionar import automaticamente ao inserir componente existente
+- [x] Substituir prompt nativo por modal/input proprio da extensao
+- [ ] Trocar prompt de inserir componente por seletor/dropdown pesquisavel
+- [x] Inferir props iniciais para textos estaticos e `src`/`alt` de imagens
+- [x] Inferir props para classes estaticas e permitir edicao por instancia quando possivel
+- [ ] Permitir escolher pasta/destino do componente
+- [ ] Permitir duplicar componente existente antes de editar
 
 ### Ajustes de UX e Contexto aplicados na Fase 1
 
@@ -203,7 +264,9 @@ Checklist:
 - [x] Melhorar UI dos controles estruturais com botoes iconograficos e tooltip
 - [x] Diferenciar selecao da arvore por instancia de elemento, e nao apenas por `oid`
 - [x] Transformar estilos do projeto em dropdown com busca e preview por hover
+- [x] Adicionar undo global no bridge para restaurar a ultima edicao persistida no codigo-fonte
 - [ ] Revisar por que classes project-wide como `text-brand-600` ainda podem nao aparecer em alguns projetos/paginas
+- [ ] Revisitar a persistencia de `move` na arvore: ainda ha casos em que mover um elemento e tentar movê-lo de volta em seguida falha sem refresh
 
 ### 5. Conversor de elementos externos em componente React
 

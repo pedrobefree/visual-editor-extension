@@ -21,9 +21,11 @@ const CSS = `
 }
 #toolbar.dragging { cursor: grabbing; }
 .ve-badge {
-  background: #6366f1; color: white; border-radius: 5px;
-  padding: 2px 8px; font-size: 11px; font-weight: 700; letter-spacing: .03em;
-  margin-right: 3px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 20px; padding: 0 4px; margin-right: 3px; flex-shrink: 0;
+}
+.ve-badge img {
+  display: block; height: 14px; width: auto;
 }
 .divider { width: 1px; height: 18px; background: #2a2a2a; margin: 0 3px; flex-shrink: 0; }
 .tb-btn {
@@ -84,6 +86,17 @@ const SVG_COMPONENTS = `<svg class="tb-icon" viewBox="0 0 16 16" fill="none" str
   <circle cx="11.5" cy="11.5" r="2.5"/>
 </svg>`;
 
+const SVG_ASSETS = `<svg class="tb-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+  <rect x="1.5" y="2" width="13" height="11.5" rx="1.5"/>
+  <path d="M4.5 10.5l2.2-2.2a1 1 0 0 1 1.4 0l1.4 1.4 1.4-1.4a1 1 0 0 1 1.4 0l1.2 1.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="5.25" cy="5.25" r="1"/>
+</svg>`;
+
+const SVG_UNDO = `<svg class="tb-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+  <path d="M6 4L3 7l3 3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M3.5 7h6.25a3.25 3.25 0 1 1 0 6.5H8" stroke-linecap="round"/>
+</svg>`;
+
 const BREAKPOINTS = [
     { labelKey: 'breakpointBase', prefix: '', width: null, titleKey: 'breakpointBaseTitle' },
     { labelKey: null, prefix: 'sm:', width: 640, titleKey: 'breakpointSmTitle' },
@@ -97,6 +110,8 @@ export interface ToolbarCallbacks {
     onTheme: () => void;
     onTree: () => void;
     onComponents: () => void;
+    onAssets: () => void;
+    onUndo: () => void;
     onOutline: (active: boolean) => void;
     onBreakpoint: (prefix: string, width: number | null) => void;
     onDisable: () => void;
@@ -114,8 +129,10 @@ export class VisualEditToolbar {
     private themeActive      = false;
     private treeActive       = false;
     private componentsActive = false;
+    private assetsActive     = false;
     private outlineActive    = false;
     private responsivePrefix = '';
+    private readonly logoUrl = chrome.runtime?.getURL?.('logo-highlight.png') ?? '';
 
     constructor(callbacks: ToolbarCallbacks) {
         this.callbacks = callbacks;
@@ -132,6 +149,7 @@ export class VisualEditToolbar {
     setThemeActive(v: boolean):      void { if (this.themeActive      !== v) { this.themeActive      = v; this.render(); } }
     setTreeActive(v: boolean):       void { if (this.treeActive       !== v) { this.treeActive       = v; this.render(); } }
     setComponentsActive(v: boolean): void { if (this.componentsActive !== v) { this.componentsActive = v; this.render(); } }
+    setAssetsActive(v: boolean):     void { if (this.assetsActive     !== v) { this.assetsActive     = v; this.render(); } }
 
     private render(): void {
         const style = document.createElement('style');
@@ -139,12 +157,15 @@ export class VisualEditToolbar {
         const wrapper = document.createElement('div');
         wrapper.innerHTML = `
           <div id="toolbar">
-            <span class="ve-badge">VE</span>
+            <span class="ve-badge"><img src="${this.logoUrl}" alt="befree visual edit" /></span>
             <div class="divider"></div>
             <button class="tb-btn${this.themeActive      ? ' active' : ''}" id="tb-theme">${SVG_THEME} ${t('toolbarTheme')}</button>
             <button class="tb-btn${this.treeActive       ? ' active' : ''}" id="tb-tree">${SVG_TREE} ${t('toolbarTree')}</button>
             <button class="tb-btn${this.componentsActive ? ' active' : ''}" id="tb-components">${SVG_COMPONENTS} ${t('toolbarComponents')}</button>
+            <button class="tb-btn${this.assetsActive     ? ' active' : ''}" id="tb-assets">${SVG_ASSETS} ${t('toolbarAssets')}</button>
             <button class="tb-btn${this.outlineActive    ? ' active' : ''}" id="tb-outline">${SVG_OUTLINE} ${t('toolbarOutline')}</button>
+            <div class="divider"></div>
+            <button class="tb-btn" id="tb-undo" title="${t('toolbarUndoTitle')}" aria-label="${t('toolbarUndoTitle')}">${SVG_UNDO}</button>
             <div class="divider"></div>
             <div class="bp-group" aria-label="${t('toolbarResponsivePreview')}">
               ${BREAKPOINTS.map(bp =>
@@ -161,6 +182,13 @@ export class VisualEditToolbar {
     }
 
     private bindEvents(): void {
+        const bindPress = (selector: string, handler: () => void): void => {
+            this.shadow.querySelector(selector)?.addEventListener('pointerdown', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                handler();
+            });
+        };
         // Block all events from leaking out of the toolbar
         const toolbar = this.shadow.querySelector('#toolbar');
         if (toolbar) {
@@ -173,26 +201,36 @@ export class VisualEditToolbar {
             });
         }
 
-        this.shadow.querySelector('#tb-theme')?.addEventListener('click', () => {
+        bindPress('#tb-theme', () => {
             this.callbacks.onTheme();
         });
 
-        this.shadow.querySelector('#tb-tree')?.addEventListener('click', () => {
+        bindPress('#tb-tree', () => {
             this.callbacks.onTree();
         });
 
-        this.shadow.querySelector('#tb-components')?.addEventListener('click', () => {
+        bindPress('#tb-components', () => {
             this.callbacks.onComponents();
         });
 
-        this.shadow.querySelector('#tb-outline')?.addEventListener('click', () => {
+        bindPress('#tb-assets', () => {
+            this.callbacks.onAssets();
+        });
+
+        bindPress('#tb-outline', () => {
             this.outlineActive = !this.outlineActive;
             this.render();
             this.callbacks.onOutline(this.outlineActive);
         });
 
+        bindPress('#tb-undo', () => {
+            this.callbacks.onUndo();
+        });
+
         this.shadow.querySelectorAll('.bp-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('pointerdown', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
                 const el = btn as HTMLElement;
                 const prefix = el.dataset.prefix ?? '';
                 const width = el.dataset.width ? Number(el.dataset.width) : null;
@@ -202,7 +240,7 @@ export class VisualEditToolbar {
             });
         });
 
-        this.shadow.querySelector('#tb-close')?.addEventListener('click', () => {
+        bindPress('#tb-close', () => {
             this.callbacks.onDisable();
         });
     }

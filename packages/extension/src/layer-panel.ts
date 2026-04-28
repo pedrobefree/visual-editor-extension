@@ -18,6 +18,10 @@ interface TreeNode {
     children: TreeNode[];
 }
 
+interface FilteredTreeNode extends TreeNode {
+    children: FilteredTreeNode[];
+}
+
 function getLabel(el: HTMLElement): string {
     const aria = el.getAttribute('aria-label');
     if (aria) return aria;
@@ -103,8 +107,18 @@ const CSS = `
 }
 #layer-header.dragging { cursor: grabbing; }
 .layer-title { font-size: 10px; font-weight: 600; color: #666; letter-spacing: .08em; text-transform: uppercase; }
-#refresh-btn { background: none; border: none; color: #555; cursor: pointer; font-size: 14px; padding: 2px 4px; line-height: 1; }
-#refresh-btn:hover { color: #e5e5e5; }
+.layer-header-actions { display:flex; align-items:center; gap:6px; }
+.icon-btn {
+  width: 26px; height: 24px; padding: 0; border-radius: 6px; cursor: pointer;
+  border: 1px solid #2a2a2a; background: #171717; color: #666; font-size: 13px;
+}
+.icon-btn:hover { color: #e5e5e5; border-color: #444; background: #202020; }
+.search-wrap { padding: 8px 12px; border-bottom: 1px solid #1e1e1e; flex-shrink: 0; }
+.search-input {
+  width: 100%; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px;
+  color: #e5e5e5; padding: 5px 9px; font-size: 11px; outline: none;
+}
+.search-input:focus { border-color: #6366f1; }
 #layer-body { overflow-y: auto; flex: 1; padding: 4px 0; }
 #layer-body::-webkit-scrollbar { width: 3px; }
 #layer-body::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
@@ -116,6 +130,8 @@ const CSS = `
 .tree-node.selected { background: #1e1e3a; }
 .tree-node.selected .node-label { color: #818cf8; }
 .tree-node.selected .node-tag { color: #6366f1; }
+.tree-node.drop-target { background: rgba(99,102,241,.22); box-shadow: inset 0 0 0 1px rgba(129,140,248,.7); }
+.tree-node.dragging { opacity: .45; }
 .toggle-btn {
   width: 14px; height: 14px; display: flex; align-items: center; justify-content: center;
   color: #444; font-size: 9px; flex-shrink: 0; border-radius: 2px; cursor: pointer;
@@ -153,7 +169,9 @@ export interface LayerPanelCallbacks {
     onSelect: (el: HTMLElement, oid: string) => void;
     onHover?: (el: HTMLElement | null, oid: string) => void;
     onMove?: (el: HTMLElement, oid: string, direction: 'up' | 'down') => void;
+    onMoveToContainer?: (el: HTMLElement, oid: string, targetEl: HTMLElement, targetOid: string) => void;
     isComponentRoot?: (oid: string) => boolean;
+    onClose?: () => void;
 }
 
 export class LayerPanel {
@@ -168,6 +186,9 @@ export class LayerPanel {
     private parentByKey = new Map<string, string | null>();
     private elementByKey = new Map<string, HTMLElement>();
     private keyByElement = new WeakMap<HTMLElement, string>();
+    private draggingKey = '';
+    private query = '';
+    private searchValue = '';
     private dragCleanup:  (() => void) | null = null;
     private unsubscribeLanguage: (() => void) | null = null;
 
@@ -209,7 +230,7 @@ export class LayerPanel {
         this.shadow.querySelectorAll('.tree-node').forEach(n => {
             const isSelected = (n as HTMLElement).dataset.key === key;
             n.classList.toggle('selected', isSelected);
-            if (isSelected) (n as HTMLElement).scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            if (isSelected) (n as HTMLElement).scrollIntoView({ block: 'nearest' });
         });
     }
 
@@ -234,8 +255,9 @@ export class LayerPanel {
         const style = document.createElement('style');
         style.textContent = CSS;
 
-        const bodyHtml = roots.length
-            ? this.renderNodes(roots)
+        const filteredRoots = this.filterNodes(roots);
+        const bodyHtml = filteredRoots.length
+            ? this.renderNodes(filteredRoots)
             : `<div id="empty">${t('layerEmpty')}</div>`;
 
         const wrapper = document.createElement('div');
@@ -243,7 +265,13 @@ export class LayerPanel {
           <div id="layer-panel">
             <div id="layer-header">
               <span class="layer-title">${t('layerTitle')}</span>
-              <button id="refresh-btn" title="${t('layerRefresh')}">↺</button>
+              <div class="layer-header-actions">
+                <button class="icon-btn" id="refresh-btn" title="${t('layerRefresh')}">↺</button>
+                <button class="icon-btn" id="layer-close" title="${t('layerClose')}">×</button>
+              </div>
+            </div>
+            <div class="search-wrap">
+              <input class="search-input" id="layer-search" placeholder="${t('layerSearchPlaceholder')}" value="${this.escapeHtml(this.searchValue)}" autocomplete="off" spellcheck="false" />
             </div>
             <div id="layer-body">${bodyHtml}</div>
           </div>`;
@@ -262,7 +290,7 @@ export class LayerPanel {
         }
     }
 
-    private renderNodes(nodes: TreeNode[]): string {
+    private renderNodes(nodes: FilteredTreeNode[]): string {
         return nodes.map(({ el, oid, key, children, depth }, index) => {
             const tag        = el.tagName.toLowerCase();
             const label      = getLabel(el);
@@ -277,7 +305,7 @@ export class LayerPanel {
             const isComponentRoot = this.callbacks.isComponentRoot?.(oid) ?? false;
 
             return `
-              <div class="tree-node${selected ? ' selected' : ''}" data-oid="${oid}" data-key="${key}"
+              <div class="tree-node${selected ? ' selected' : ''}" data-oid="${oid}" data-key="${key}" draggable="true"
                    style="padding-left:${8 + indent}px">
                 <span class="${toggleCls}" data-toggle="${oid}"></span>
                 <span class="node-icon">${icon}</span>
@@ -295,6 +323,29 @@ export class LayerPanel {
         }).join('');
     }
 
+    private filterNodes(nodes: TreeNode[]): FilteredTreeNode[] {
+        const q = this.query.trim().toLowerCase();
+        if (!q) return nodes as FilteredTreeNode[];
+        const visit = (node: TreeNode): FilteredTreeNode | null => {
+            const children = node.children.map(visit).filter(Boolean) as FilteredTreeNode[];
+            const tag = node.el.tagName.toLowerCase();
+            const label = getLabel(node.el).toLowerCase();
+            if (label.includes(q) || tag.includes(q) || children.length) {
+                return { ...node, children };
+            }
+            return null;
+        };
+        return nodes.map(visit).filter(Boolean) as FilteredTreeNode[];
+    }
+
+    private escapeHtml(value: string): string {
+        return value
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
     private bindEvents(): void {
         // Block propagation
         const panel = this.shadow.querySelector('#layer-panel');
@@ -308,9 +359,69 @@ export class LayerPanel {
             e.stopPropagation();
             this.render();
         });
+        this.shadow.querySelector('#layer-close')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.callbacks.onClose?.();
+        });
+        const searchInput = this.shadow.querySelector('#layer-search') as HTMLInputElement | null;
+        searchInput?.addEventListener('input', () => {
+            const cursor = searchInput.selectionStart ?? searchInput.value.length;
+            this.searchValue = searchInput.value;
+            this.query = this.searchValue.trim().toLowerCase();
+            this.render();
+            const nextInput = this.shadow.querySelector('#layer-search') as HTMLInputElement | null;
+            nextInput?.focus();
+            nextInput?.setSelectionRange(cursor, cursor);
+        });
+        searchInput?.focus();
+        searchInput?.setSelectionRange(this.searchValue.length, this.searchValue.length);
 
         // Node clicks
         this.shadow.querySelectorAll('.tree-node').forEach(nodeEl => {
+            nodeEl.addEventListener('dragstart', (e) => {
+                const event = e as DragEvent;
+                const key = (nodeEl as HTMLElement).dataset.key ?? '';
+                this.draggingKey = key;
+                (nodeEl as HTMLElement).classList.add('dragging');
+                event.dataTransfer?.setData('text/plain', key);
+                if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+            });
+            nodeEl.addEventListener('dragend', () => {
+                this.draggingKey = '';
+                this.shadow.querySelectorAll('.tree-node').forEach(el => el.classList.remove('dragging', 'drop-target'));
+            });
+            nodeEl.addEventListener('dragover', (e) => {
+                const event = e as DragEvent;
+                if (!this.draggingKey) return;
+                const targetKey = (nodeEl as HTMLElement).dataset.key ?? '';
+                if (!targetKey || targetKey === this.draggingKey) return;
+                event.preventDefault();
+                if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+                this.shadow.querySelectorAll('.tree-node.drop-target').forEach(el => {
+                    if (el !== nodeEl) el.classList.remove('drop-target');
+                });
+                (nodeEl as HTMLElement).classList.add('drop-target');
+            });
+            nodeEl.addEventListener('dragleave', () => {
+                (nodeEl as HTMLElement).classList.remove('drop-target');
+            });
+            nodeEl.addEventListener('drop', (e) => {
+                const event = e as DragEvent;
+                event.preventDefault();
+                event.stopPropagation();
+                const sourceKey = event.dataTransfer?.getData('text/plain') || this.draggingKey;
+                const targetKey = (nodeEl as HTMLElement).dataset.key ?? '';
+                this.shadow.querySelectorAll('.tree-node').forEach(el => el.classList.remove('dragging', 'drop-target'));
+                this.draggingKey = '';
+                if (!sourceKey || !targetKey || sourceKey === targetKey) return;
+                const sourceEl = this.elementByKey.get(sourceKey);
+                const targetEl = this.elementByKey.get(targetKey);
+                const sourceOid = sourceEl?.getAttribute(OID_ATTR) ?? '';
+                const targetOid = targetEl?.getAttribute(OID_ATTR) ?? '';
+                if (sourceEl && targetEl && sourceOid && targetOid) {
+                    this.callbacks.onMoveToContainer?.(sourceEl, sourceOid, targetEl, targetOid);
+                }
+            });
             nodeEl.addEventListener('mouseenter', () => {
                 const oid = (nodeEl as HTMLElement).dataset.oid ?? '';
                 const el = document.querySelector<HTMLElement>(`[${OID_ATTR}="${oid}"]`);

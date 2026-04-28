@@ -44,8 +44,12 @@ export interface PanelCallbacks {
     /** Update a specific JSX attribute (e.g. placeholder) on the element */
     onAttrApply: (oid: string, attrName: string, newValue: string, currentValue: string, scope: EditScope) => Promise<EditResponse>;
     onInsertElement: (oid: string, preset: 'text' | 'button' | 'group' | 'image') => Promise<EditResponse>;
+    onInsertComponent: (oid: string, componentName: string) => Promise<EditResponse>;
     onRemoveElement: (oid: string) => Promise<EditResponse>;
+    onDuplicateElement: (oid: string) => Promise<EditResponse>;
+    onCreateComponent: (oid: string, name: string) => Promise<EditResponse>;
     onStartCopyStyle: (oid: string) => void;
+    onOpenAssets: (oid: string) => void;
     onClose: () => void;
 }
 
@@ -379,6 +383,27 @@ const CSS = `
 }
 .chip:hover { background: #2a2a2a; color: #e5e5e5; }
 .chip.active { background: #6366f1; border-color: #6366f1; color: white; }
+.class-editor {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  border: 1px solid #252525; border-radius: 10px; background: #121212;
+  padding: 8px; min-height: 44px;
+}
+.class-token {
+  max-width: 100%;
+  border: 1px solid #2a2a2a; border-radius: 999px; background: #1d1d1d; color: #d4d4d8;
+  padding: 4px 9px; font-size: 10px; line-height: 1.2; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.class-token:hover { border-color: #4f46e5; color: #fff; background: #222236; }
+.class-token.active.original { background: #4338ca; border-color: #4f46e5; color: #eef2ff; }
+.class-token.active.added { background: #0f2a22; border-color: #14532d; color: #bbf7d0; }
+.class-token.inactive.original { background: #171717; border-style: dashed; color: #666; opacity: .95; }
+.class-token-input {
+  flex: 1 1 120px; min-width: 120px; border: none; outline: none; background: transparent;
+  color: #e5e5e5; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; padding: 4px 2px;
+}
+.class-token-input::placeholder { color: #555; }
+.class-editor-empty { font-size: 10px; color: #444; }
 .color-picker { position: relative; width: 100%; max-width: 190px; }
 .color-picker-trigger {
   width: 100%; display: inline-flex; align-items: center; gap: 7px;
@@ -474,13 +499,6 @@ const CSS = `
 .suggestion-category-items { display: none; border-top: 1px solid #222; }
 .suggestion-category-items.open { display: block; }
 .suggestion-category-items .suggestion { padding-left: 16px; }
-/* Classes textarea */
-.classes-input {
-  width: 100%; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px;
-  color: #e5e5e5; padding: 6px 8px; font-size: 11px; font-family: monospace;
-  resize: vertical; outline: none; line-height: 1.5; min-height: 52px;
-}
-.classes-input:focus { border-color: #6366f1; }
 /* Text area */
 .text-input {
   width: 100%; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px;
@@ -489,7 +507,21 @@ const CSS = `
 }
 .text-input:focus { border-color: #6366f1; }
 .text-hint { font-size: 10px; color: #444; line-height: 1.4; }
-.structure-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.image-source-card {
+  display: grid; grid-template-columns: 58px 1fr; gap: 10px; align-items: center;
+  border: 1px solid #242424; background: #181818; border-radius: 9px; padding: 8px;
+}
+.image-source-preview {
+  width: 58px; height: 58px; border-radius: 7px; background: #0f0f0f; border: 1px solid #2a2a2a;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.image-source-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.image-source-preview span { color: #555; font-size: 9px; text-align: center; padding: 4px; }
+.image-source-meta { min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.image-source-path {
+  display: block; color: #aaa; font-size: 10px; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.structure-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
 .structure-btn {
   background: #1e1e1e; color: #ddd; border: 1px solid #2a2a2a; border-radius: 9px;
   padding: 0; min-height: 38px; font-size: 11px; cursor: pointer; text-align: center;
@@ -498,7 +530,7 @@ const CSS = `
 .structure-btn:hover { background: #252525; border-color: #444; }
 .structure-btn.danger { color: #fca5a5; border-color: #4b1d1d; }
 .structure-btn.secondary { color: #c7d2fe; border-color: #3730a3; }
-.structure-btn-icon { font-size: 15px; line-height: 1; }
+.structure-btn-icon { width: 15px; height: 15px; display: block; color: currentColor; }
 .project-style-section {
   display: flex; flex-direction: column; gap: 6px; padding: 8px 0 2px; border-top: 1px solid #1e1e1e;
 }
@@ -542,6 +574,13 @@ const CSS = `
   display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
   background: #101010; border: 1px solid #222; border-radius: 7px; padding: 3px;
 }
+.scope-shell {
+  padding: 10px 12px 8px; border-bottom: 1px solid #1e1e1e;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.scope-label {
+  font-size: 10px; color: #666; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+}
 .scope-btn {
   border: none; border-radius: 5px; padding: 5px 6px; cursor: pointer;
   background: transparent; color: #777; font-size: 11px; font-weight: 600;
@@ -558,6 +597,18 @@ const CSS = `
 }
 .toast.success { border-color: #16a34a; color: #4ade80; }
 .toast.error { border-color: #dc2626; color: #f87171; }
+.ve-modal-backdrop {
+  position: fixed; inset: 0; z-index: 2147483647;
+  background: rgba(0,0,0,.38); display: flex; align-items: center; justify-content: center;
+}
+.ve-modal {
+  width: min(280px, calc(100vw - 40px)); background: #141414; border: 1px solid #303030;
+  border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.65); padding: 14px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.ve-modal-title { font-size: 11px; color: #aaa; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.ve-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.ve-modal-actions .btn { padding: 7px 12px; flex: 0 0 auto; min-width: 82px; }
 @keyframes slideIn { from { transform: translateY(8px); opacity:0; } to { transform: translateY(0); opacity:1; } }
 .chevron { transition: transform .15s; display: inline-block; }
 .section-header.collapsed .chevron { transform: rotate(-90deg); }
@@ -569,12 +620,32 @@ function chips(values: string[]): string {
     ).join('')}</div>`;
 }
 
-function buildCurrentClassChips(classes: string): string {
-    const list = classes.split(/\s+/).filter(Boolean);
-    if (!list.length) return `<span style="font-size:10px;color:#444">${t('panelNoClasses')}</span>`;
-    return `<div class="chips">${list.map(cls =>
-        `<div class="chip active" data-class="${cls}" title="${classTooltip(cls)}">${cls}</div>`
-    ).join('')}</div>`;
+function splitClasses(value: string): string[] {
+    return value.split(/\s+/).filter(Boolean);
+}
+
+function buildClassTokenEditor(activeClasses: string, originalClasses: string): string {
+    const active = new Set(splitClasses(activeClasses));
+    const original = splitClasses(originalClasses);
+    const originalSet = new Set(original);
+    const extras = splitClasses(activeClasses).filter(cls => !originalSet.has(cls));
+    const tokens = [
+        ...original.map(cls => {
+            const isActive = active.has(cls);
+            return `<button class="class-token${isActive ? ' active' : ' inactive'} original" type="button" data-class="${escapeHtml(cls)}" title="${escapeHtml(classTooltip(cls))}">${escapeHtml(cls)}</button>`;
+        }),
+        ...extras.map(cls =>
+            `<button class="class-token active added" type="button" data-class="${escapeHtml(cls)}" title="${escapeHtml(classTooltip(cls))}">${escapeHtml(cls)}</button>`,
+        ),
+    ];
+
+    return `
+      <div class="class-editor" id="class-editor">
+        ${tokens.join('')}
+        <input class="class-token-input" id="class-token-input" type="text" spellcheck="false" autocomplete="off" placeholder="${t('panelClassTokenPlaceholder')}" />
+      </div>
+      <span class="class-editor-empty" style="${tokens.length ? 'display:none' : ''}">${t('panelNoClasses')}</span>
+    `;
 }
 
 function buildProjectSuggestionsControl(): string {
@@ -933,12 +1004,23 @@ function clampPercent(value: string): string {
     return String(Math.max(0, Math.min(100, parsed)));
 }
 
-function buildScopeControl(hidden: boolean): string {
+const STRUCTURE_ICONS = {
+    text: `<svg class="structure-btn-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4.5h10M8 4.5v7M5.5 11.5h5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    button: `<svg class="structure-btn-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.25" y="4.25" width="11.5" height="7.5" rx="3.75"/><path d="M5.25 8h5.5" stroke-linecap="round"/></svg>`,
+    group: `<svg class="structure-btn-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 5h6v6H5z"/></svg>`,
+    image: `<svg class="structure-btn-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2.5" width="12" height="11" rx="1.75"/><circle cx="5.25" cy="6" r="1"/><path d="M4 11l2.4-2.4a1 1 0 0 1 1.4 0l1.2 1.2 1.3-1.3a1 1 0 0 1 1.4 0L13 10" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    component: `<svg class="structure-btn-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5" rx="1.2"/><rect x="9" y="2" width="5" height="5" rx="1.2"/><rect x="2" y="9" width="5" height="5" rx="1.2"/><path d="M10.2 9.4h3.6v3.6h-3.6z"/><path d="M12 8.2v1.2M12 13v1.2M8.2 12h1.2M13.8 12H15" stroke-linecap="round"/></svg>`,
+    duplicate: `<svg class="structure-btn-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="8" height="8" rx="1.5"/><rect x="3" y="3" width="8" height="8" rx="1.5"/></svg>`,
+    createComponent: `<svg class="structure-btn-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 3.5h5.5a3 3 0 0 1 0 6H9" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 12.5H5.5a3 3 0 0 1 0-6H7" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.2 5.6 2.8 7l1.4 1.4M11.8 10.4 13.2 9l-1.4-1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    remove: `<svg class="structure-btn-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3.5 4.5h9"/><path d="M6.25 2.75h3.5"/><path d="M5 4.5v7.25a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V4.5"/><path d="M6.75 6.5v4M9.25 6.5v4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+};
+
+function buildScopeControl(hidden: boolean, currentScope: EditScope = 'instance'): string {
     if (hidden) return '';
     return `
       <div class="scope-control">
-        <button class="scope-btn active" data-scope="instance">${t('panelScopeInstance')}</button>
-        <button class="scope-btn" data-scope="component">${t('panelScopeComponent')}</button>
+        <button class="scope-btn${currentScope === 'instance' ? ' active' : ''}" data-scope="instance">${t('panelScopeInstance')}</button>
+        <button class="scope-btn${currentScope === 'component' ? ' active' : ''}" data-scope="component">${t('panelScopeComponent')}</button>
       </div>`;
 }
 
@@ -946,12 +1028,14 @@ function buildPanel(
     oid: string,
     tag: string,
     currentClasses: string,
+    originalClasses: string,
     currentText: string,
     currentPlaceholder: string,
     currentSrc: string,
     currentAlt: string,
     gradientEditorOpen: boolean,
     hideScopeControl: boolean,
+    editScope: EditScope,
 ): string {
     const textSizes = ['text-xs','text-sm','text-base','text-lg','text-xl','text-2xl','text-3xl','text-4xl','text-5xl'];
     const fontWeights = ['font-thin','font-light','font-normal','font-medium','font-semibold','font-bold','font-extrabold','font-black'];
@@ -992,9 +1076,12 @@ function buildPanel(
     const overflow = ['overflow-auto','overflow-hidden','overflow-visible','overflow-scroll','overflow-x-auto','overflow-x-hidden','overflow-y-auto','overflow-y-hidden'];
     const zIndex = ['z-0','z-10','z-20','z-30','z-40','z-50','z-auto'];
 
-    const hasText        = currentText.trim().length > 0;
+    const isTextEditable = currentText.trim().length > 0 || ['button', 'a'].includes(tag);
     const hasPlaceholder = currentPlaceholder.trim().length > 0;
     const isImage = tag === 'img';
+    const imageSrc = currentSrc.trim();
+    const imageSrcLabel = imageSrc || t('panelImageNoSource');
+    const safeImageSrc = imageSrc.replace(/"/g, '&quot;');
 
     // Seções colapsadas por padrão — CLASSES fica aberta
     const col = 'section-content hidden';
@@ -1010,30 +1097,42 @@ function buildPanel(
         <button id="close-btn" title="${t('panelClose')}">✕</button>
       </div>
       <div id="panel-body">
+        ${hideScopeControl ? '' : `
+        <div class="scope-shell">
+          <span class="scope-label">${t('panelScope')}</span>
+          ${buildScopeControl(false, editScope)}
+          <span class="scope-hint">${t('panelScopeHint')}</span>
+        </div>
+        `}
 
-        ${(hasText || hasPlaceholder || isImage) ? `
+        ${(isTextEditable || hasPlaceholder || isImage) ? `
         <div class="section" id="sec-content">
           <div class="${hdrCol}" data-section="content">
             ${t('panelContent')} <span class="chevron">›</span>
           </div>
           <div class="${col}">
-            ${buildScopeControl(hideScopeControl)}
-            ${hideScopeControl ? '' : `<span class="scope-hint">${t('panelScopeContentHint')}</span>`}
-            ${hasText ? `
+            ${isTextEditable ? `
             <div style="font-size:10px;color:#555;margin-bottom:3px;font-weight:600;letter-spacing:.05em;text-transform:uppercase">${t('panelText')}</div>
             <textarea class="text-input" id="text-input" rows="2" spellcheck="false">${currentText}</textarea>
             <span class="text-hint">${t('panelTextHint')}</span>
             <button class="btn btn-primary" id="text-apply-btn" style="flex:none;padding:5px 12px;font-size:11px">${t('panelSaveText')}</button>
             ` : ''}
             ${hasPlaceholder ? `
-            <div style="font-size:10px;color:#555;margin-top:${hasText?'10px':'0'};margin-bottom:3px;font-weight:600;letter-spacing:.05em;text-transform:uppercase">${t('panelPlaceholder')}</div>
+            <div style="font-size:10px;color:#555;margin-top:${isTextEditable?'10px':'0'};margin-bottom:3px;font-weight:600;letter-spacing:.05em;text-transform:uppercase">${t('panelPlaceholder')}</div>
             <input class="text-input" id="placeholder-input" type="text" value="${currentPlaceholder.replace(/"/g, '&quot;')}" spellcheck="false" style="min-height:unset;height:36px" />
             <button class="btn btn-primary" id="placeholder-apply-btn" style="flex:none;padding:5px 12px;font-size:11px">${t('panelSavePlaceholder')}</button>
             ` : ''}
             ${isImage ? `
-            <div style="font-size:10px;color:#555;margin-top:${(hasText || hasPlaceholder) ? '10px' : '0'};margin-bottom:3px;font-weight:600;letter-spacing:.05em;text-transform:uppercase">${t('panelImageSrc')}</div>
-            <input class="text-input" id="image-src-input" type="text" value="${currentSrc.replace(/"/g, '&quot;')}" spellcheck="false" style="min-height:unset;height:36px" />
-            <button class="btn btn-primary" id="image-src-apply-btn" style="flex:none;padding:5px 12px;font-size:11px">${t('panelSaveImageSrc')}</button>
+            <div style="font-size:10px;color:#555;margin-top:${(isTextEditable || hasPlaceholder) ? '10px' : '0'};margin-bottom:3px;font-weight:600;letter-spacing:.05em;text-transform:uppercase">${t('panelImageSrc')}</div>
+            <div class="image-source-card">
+              <div class="image-source-preview">
+                ${imageSrc ? `<img src="${safeImageSrc}" alt="" />` : `<span>${t('panelImageNoPreview')}</span>`}
+              </div>
+              <div class="image-source-meta">
+                <span class="image-source-path" title="${safeImageSrc}">${imageSrcLabel}</span>
+                <button class="btn btn-secondary" id="image-assets-btn" style="flex:none;padding:7px 12px;font-size:11px">${t('panelImagePickAsset')}</button>
+              </div>
+            </div>
             <div style="font-size:10px;color:#555;margin-top:10px;margin-bottom:3px;font-weight:600;letter-spacing:.05em;text-transform:uppercase">${t('panelImageAlt')}</div>
             <input class="text-input" id="image-alt-input" type="text" value="${currentAlt.replace(/"/g, '&quot;')}" spellcheck="false" style="min-height:unset;height:36px" />
             <button class="btn btn-primary" id="image-alt-apply-btn" style="flex:none;padding:5px 12px;font-size:11px">${t('panelSaveImageAlt')}</button>
@@ -1057,11 +1156,14 @@ function buildPanel(
           </div>
           <div class="${col}">
             <div class="structure-grid">
-              <button class="structure-btn" id="insert-text-btn" title="${t('panelInsertText')}"><span class="structure-btn-icon">T</span></button>
-              <button class="structure-btn" id="insert-button-btn" title="${t('panelInsertButton')}"><span class="structure-btn-icon">⌘</span></button>
-              <button class="structure-btn" id="insert-group-btn" title="${t('panelInsertGroup')}"><span class="structure-btn-icon">▣</span></button>
-              <button class="structure-btn" id="insert-image-btn" title="${t('panelInsertImage')}"><span class="structure-btn-icon">▧</span></button>
-              <button class="structure-btn danger" id="remove-element-btn" title="${t('panelRemoveElement')}"><span class="structure-btn-icon">⌫</span></button>
+              <button class="structure-btn" id="insert-text-btn" title="${t('panelInsertText')}">${STRUCTURE_ICONS.text}</button>
+              <button class="structure-btn" id="insert-button-btn" title="${t('panelInsertButton')}">${STRUCTURE_ICONS.button}</button>
+              <button class="structure-btn" id="insert-group-btn" title="${t('panelInsertGroup')}">${STRUCTURE_ICONS.group}</button>
+              <button class="structure-btn" id="insert-image-btn" title="${t('panelInsertImage')}">${STRUCTURE_ICONS.image}</button>
+              <button class="structure-btn" id="insert-component-btn" title="${t('panelInsertComponent')}">${STRUCTURE_ICONS.component}</button>
+              <button class="structure-btn" id="duplicate-element-btn" title="${t('panelDuplicateElement')}">${STRUCTURE_ICONS.duplicate}</button>
+              <button class="structure-btn" id="create-component-btn" title="${t('panelCreateComponent')}">${STRUCTURE_ICONS.createComponent}</button>
+              <button class="structure-btn danger" id="remove-element-btn" title="${t('panelRemoveElement')}">${STRUCTURE_ICONS.remove}</button>
             </div>
           </div>
         </div>
@@ -1071,9 +1173,7 @@ function buildPanel(
             ${t('panelClasses')} <span class="chevron">›</span>
           </div>
           <div class="section-content">
-            ${buildScopeControl(hideScopeControl)}
-            ${hideScopeControl ? '' : `<span class="scope-hint">${t('panelScopeClassesHint')}</span>`}
-            <div id="current-chips">${buildCurrentClassChips(currentClasses)}</div>
+            ${buildClassTokenEditor(currentClasses, originalClasses)}
             <button class="structure-btn secondary" id="copy-style-btn">${t('panelCopyStyle')}</button>
             ${buildProjectSuggestionsControl()}
             <div class="modifier-strip">
@@ -1105,7 +1205,6 @@ function buildPanel(
               <input class="search-input" id="class-search" placeholder="${t('panelClassSearchPlaceholder')}" autocomplete="off" spellcheck="false" />
               <div class="suggestions" id="suggestions" style="display:none"></div>
             </div>
-            <textarea class="classes-input" id="classes-input" rows="3" spellcheck="false">${currentClasses}</textarea>
           </div>
         </div>
 
@@ -1268,6 +1367,7 @@ export class VisualEditPanel {
     private element: HTMLElement | null = null;
     private elementTag = '';
     private originalClasses = '';
+    private baselineClasses = '';
     private pendingClasses = '';
     private history: string[] = [];
     private i18nInfo: I18nInfo | null = null;
@@ -1319,6 +1419,7 @@ export class VisualEditPanel {
         this.element = el;
         this.elementTag = el.tagName.toLowerCase();
         this.originalClasses = el.className;
+        this.baselineClasses = el.className;
         this.pendingClasses = el.className;
         this.history = [];
         this.i18nInfo = null;
@@ -1477,11 +1578,17 @@ export class VisualEditPanel {
     private currentText(): string {
         if (!this.element) return '';
         // Get direct text nodes only (not deeply nested)
-        return Array.from(this.element.childNodes)
+        const directText = Array.from(this.element.childNodes)
             .filter(n => n.nodeType === Node.TEXT_NODE)
             .map(n => n.textContent?.trim() ?? '')
             .filter(Boolean)
             .join(' ');
+        if (directText) return directText;
+        const tag = this.element.tagName.toLowerCase();
+        if (tag === 'button' || tag === 'a' || this.hasSharedOid()) {
+            return this.element.innerText?.trim() || '';
+        }
+        return '';
     }
 
     private currentPlaceholder(): string {
@@ -1515,12 +1622,14 @@ export class VisualEditPanel {
             this.oid,
             tag,
             this.pendingClasses,
+            this.baselineClasses,
             this.currentText(),
             this.currentPlaceholder(),
             this.currentSrc(),
             this.currentAlt(),
             this.gradientEditorOpen,
             this.hideScopeControl,
+            this.editScope,
         );
         this.shadow.innerHTML = '';
         this.shadow.appendChild(style);
@@ -1559,10 +1668,7 @@ export class VisualEditPanel {
         // A chip is highlighted if either the plain class OR the prefixed variant is active.
         this.shadow.querySelectorAll('.chip[data-class]').forEach(chip => {
             const cls = (chip as HTMLElement).dataset.class ?? '';
-            const isCurrentChip = chip.closest('#current-chips') !== null;
-            if (!isCurrentChip) {
-                chip.classList.toggle('active', set.has(cls) || (prefix !== '' && set.has(prefix + cls)));
-            }
+            chip.classList.toggle('active', set.has(cls) || (prefix !== '' && set.has(prefix + cls)));
         });
 
         // Atualiza swatches de cor
@@ -1580,23 +1686,51 @@ export class VisualEditPanel {
             const value = activeClass ? colorValueForClass(activeClass) : null;
             if (preview && value) preview.style.background = value;
         });
+        this.syncClassEditor();
+    }
 
-        // Atualiza o textarea de classes
-        const input = this.shadow.querySelector('#classes-input') as HTMLTextAreaElement | null;
-        if (input) input.value = classes;
+    private syncClassEditor(): void {
+        const editor = this.shadow.querySelector('#class-editor');
+        if (!editor) return;
+        const active = new Set(splitClasses(this.pendingClasses));
+        const original = splitClasses(this.baselineClasses);
+        const originalSet = new Set(original);
+        const extras = splitClasses(this.pendingClasses).filter(cls => !originalSet.has(cls));
 
-        // Rebuild dos current-class chips para refletir o estado atual
-        const currentChipsEl = this.shadow.querySelector('#current-chips');
-        if (currentChipsEl) {
-            currentChipsEl.innerHTML = buildCurrentClassChips(classes);
-            // Re-bind: current chips always toggle the exact class they represent (no prefix)
-            currentChipsEl.querySelectorAll('.chip').forEach(chip => {
-                chip.addEventListener('click', () => {
-                    const cls = (chip as HTMLElement).dataset.class ?? '';
-                    if (cls) this.toggleClass(cls, true);
-                });
-            });
+        editor.querySelectorAll('.class-token').forEach(token => token.remove());
+        const input = this.shadow.querySelector('#class-token-input') as HTMLInputElement | null;
+
+        const createToken = (cls: string, isActive: boolean, kind: 'original' | 'added') => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = `class-token ${isActive ? 'active' : 'inactive'} ${kind}`;
+            btn.dataset.class = cls;
+            btn.title = classTooltip(cls);
+            btn.textContent = cls;
+            btn.addEventListener('click', () => this.toggleClass(cls, true));
+            return btn;
+        };
+
+        for (const cls of original) editor.insertBefore(createToken(cls, active.has(cls), 'original'), input);
+        for (const cls of extras) editor.insertBefore(createToken(cls, true, 'added'), input);
+        const empty = this.shadow.querySelector('.class-editor-empty') as HTMLElement | null;
+        if (empty) empty.style.display = original.length || extras.length ? 'none' : '';
+    }
+
+    private commitClassTokenInput(rawValue: string): void {
+        const values = splitClasses(rawValue.replace(/,/g, ' '));
+        if (!values.length) return;
+        this.pushClassHistory();
+        const parts = new Set(splitClasses(this.pendingClasses));
+        for (const rawToken of values) {
+            const hasVariant = /[a-z0-9-]+:/.test(rawToken);
+            const fullToken = this.activePrefix && !hasVariant ? this.activePrefix + rawToken : rawToken;
+            parts.add(fullToken);
+            injectClassForPreview(fullToken);
         }
+        this.pendingClasses = Array.from(parts).join(' ');
+        if (this.element) this.element.className = this.pendingClasses;
+        this.syncActiveChips(this.pendingClasses);
     }
 
     /** Toggle a Tailwind class, optionally prepending the active modifier prefix.
@@ -1718,6 +1852,43 @@ export class VisualEditPanel {
         }
     }
 
+    private requestComponentName(): Promise<string | null> {
+        return new Promise(resolve => {
+            this.shadow.querySelector('.ve-modal-backdrop')?.remove();
+            const backdrop = document.createElement('div');
+            backdrop.className = 've-modal-backdrop';
+            backdrop.innerHTML = `
+              <div class="ve-modal" role="dialog" aria-modal="true">
+                <div class="ve-modal-title">${t('panelCreateComponentPrompt')}</div>
+                <input class="text-input" id="component-name-input" type="text" value="NewComponent" spellcheck="false" />
+                <div class="ve-modal-actions">
+                  <button class="btn btn-secondary" id="component-name-cancel">${t('assetsCancel')}</button>
+                  <button class="btn btn-primary" id="component-name-confirm">${t('assetsSave')}</button>
+                </div>
+              </div>
+            `;
+            const close = (value: string | null) => {
+                backdrop.remove();
+                resolve(value);
+            };
+            backdrop.addEventListener('click', event => {
+                if (event.target === backdrop) close(null);
+            });
+            this.shadow.appendChild(backdrop);
+            const input = backdrop.querySelector('#component-name-input') as HTMLInputElement | null;
+            const confirm = backdrop.querySelector('#component-name-confirm') as HTMLButtonElement | null;
+            const cancel = backdrop.querySelector('#component-name-cancel') as HTMLButtonElement | null;
+            input?.focus();
+            input?.select();
+            confirm?.addEventListener('click', () => close(input?.value.trim() || null));
+            cancel?.addEventListener('click', () => close(null));
+            input?.addEventListener('keydown', event => {
+                if (event.key === 'Enter') close(input.value.trim() || null);
+                if (event.key === 'Escape') close(null);
+            });
+        });
+    }
+
     /** Syncs the `.active` state of all modifier prefix buttons to the current selection. */
     private updatePrefixButtons(): void {
         this.shadow.querySelectorAll('.prefix-btn[data-prefix-type]').forEach(btn => {
@@ -1826,14 +1997,6 @@ export class VisualEditPanel {
             headerEl.addEventListener('pointerdown', onPointerDown);
         }
 
-        // Current-class chips (primeiro bind — depois syncActiveChips os refaz)
-        this.shadow.querySelector('#current-chips')?.querySelectorAll('.chip').forEach(chip => {
-            chip.addEventListener('click', () => {
-                const cls = (chip as HTMLElement).dataset.class ?? '';
-                if (cls) this.toggleClass(cls, true); // ignore prefix: current chips are already fully-qualified
-            });
-        });
-
         this.shadow.querySelectorAll('.scope-btn[data-scope]').forEach(btn => {
             btn.addEventListener('click', () => {
                 this.editScope = ((btn as HTMLElement).dataset.scope as EditScope) ?? 'instance';
@@ -1879,9 +2042,8 @@ export class VisualEditPanel {
             });
         });
 
-        // Chips (seções de tipografia, espaçamento, etc. — não inclui current-chips que são bindados em syncActiveChips)
+        // Chips de sugestões rápidas
         this.shadow.querySelectorAll('.chip[data-class]').forEach(chip => {
-            if (chip.closest('#current-chips')) return; // handled in syncActiveChips
             chip.addEventListener('click', () => {
                 const cls = (chip as HTMLElement).dataset.class ?? '';
                 if (cls) this.toggleClass(cls);
@@ -1912,7 +2074,6 @@ export class VisualEditPanel {
                 if (cls.startsWith('bg-')) {
                     this.applyClassSet(cls, [GRADIENT_CLASS_RE, BG_COLOR_RE]);
                     this.gradientEditorOpen = false;
-                    this.render();
                 } else {
                     this.toggleClass(cls);
                 }
@@ -1973,14 +2134,26 @@ export class VisualEditPanel {
             this.render();
         });
 
-        // Class textarea manual edit
-        const classInput = this.shadow.querySelector('#classes-input') as HTMLTextAreaElement;
-        classInput?.addEventListener('input', () => {
-            this.pendingClasses = classInput.value;
-            injectClassesForPreview(this.pendingClasses);
-            if (this.element) this.element.className = this.pendingClasses;
-            this.syncActiveChips(this.pendingClasses);
+        const classTokenInput = this.shadow.querySelector('#class-token-input') as HTMLInputElement | null;
+        const commitTokenInput = () => {
+            if (!classTokenInput) return;
+            const rawValue = classTokenInput.value.trim();
+            if (!rawValue) return;
+            this.commitClassTokenInput(rawValue);
+            classTokenInput.value = '';
+        };
+        classTokenInput?.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === 'Tab' || e.key === ',') {
+                e.preventDefault();
+                commitTokenInput();
+                return;
+            }
+            if (e.key === ' ' && classTokenInput.value.trim()) {
+                e.preventDefault();
+                commitTokenInput();
+            }
         });
+        classTokenInput?.addEventListener('blur', () => commitTokenInput());
 
         // ── Class search ──────────────────────────────────────────────────
         const searchInput = this.shadow.querySelector('#class-search') as HTMLInputElement;
@@ -2329,21 +2502,8 @@ export class VisualEditPanel {
             this.showToast(result.ok ? t('panelPlaceholderSaved') : result.error ?? t('panelPlaceholderSaveError'), result.ok ? 'success' : 'error');
         });
 
-        const imageSrcInput = this.shadow.querySelector('#image-src-input') as HTMLInputElement | null;
-        const imageSrcBtn = this.shadow.querySelector('#image-src-apply-btn') as HTMLButtonElement | null;
-        imageSrcInput?.addEventListener('input', () => {
-            if (this.element) this.element.setAttribute('src', imageSrcInput.value);
-        });
-        imageSrcBtn?.addEventListener('click', async () => {
-            if (!imageSrcInput) return;
-            imageSrcBtn.disabled = true;
-            imageSrcBtn.textContent = '…';
-            const result = await this.callbacks.onAttrApply(this.oid, 'src', imageSrcInput.value, this.originalSrc, this.editScope);
-            imageSrcBtn.disabled = false;
-            imageSrcBtn.textContent = t('panelSaveImageSrc');
-            if (result.ok) this.originalSrc = imageSrcInput.value;
-            this.showToast(result.ok ? t('panelImageSrcSaved') : result.error ?? t('panelImageSrcSaveError'), result.ok ? 'success' : 'error');
-        });
+        const imageAssetsBtn = this.shadow.querySelector('#image-assets-btn') as HTMLButtonElement | null;
+        imageAssetsBtn?.addEventListener('click', () => this.callbacks.onOpenAssets(this.oid));
 
         const imageAltInput = this.shadow.querySelector('#image-alt-input') as HTMLInputElement | null;
         const imageAltBtn = this.shadow.querySelector('#image-alt-apply-btn') as HTMLButtonElement | null;
@@ -2383,6 +2543,13 @@ export class VisualEditPanel {
         bindStructureAction('#insert-button-btn', () => this.callbacks.onInsertElement(this.oid, 'button'), t('panelInsertSuccess'));
         bindStructureAction('#insert-group-btn', () => this.callbacks.onInsertElement(this.oid, 'group'), t('panelInsertSuccess'));
         bindStructureAction('#insert-image-btn', () => this.callbacks.onInsertElement(this.oid, 'image'), t('panelInsertSuccess'));
+        bindStructureAction('#insert-component-btn', () => this.callbacks.onInsertComponent(this.oid, ''), t('componentsInsertTitle'));
+        bindStructureAction('#duplicate-element-btn', () => this.callbacks.onDuplicateElement(this.oid), t('panelDuplicateSuccess'));
+        bindStructureAction('#create-component-btn', async () => {
+            const name = await this.requestComponentName();
+            if (!name) return { ok: false, error: t('panelCreateComponentCancelled') };
+            return this.callbacks.onCreateComponent(this.oid, name);
+        }, t('panelCreateComponentSuccess'));
         bindStructureAction('#remove-element-btn', () => this.callbacks.onRemoveElement(this.oid), t('panelRemoveSuccess'));
 
         this.shadow.querySelector('#copy-style-btn')?.addEventListener('click', () => {

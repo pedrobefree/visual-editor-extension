@@ -46,12 +46,12 @@ const CSS = `
 * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 #comp-panel {
   position: fixed; top: 52px; left: 280px; z-index: 2147483645;
-  width: 280px; max-height: calc(100vh - 68px);
+  width: 280px; height: min(760px, calc(100vh - 68px)); min-width: 240px; min-height: 220px; max-width: calc(100vw - 24px); max-height: calc(100vh - 68px);
   background: #141414; color: #e5e5e5;
   border: 1px solid #2a2a2a; border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0,0,0,.6);
   display: flex; flex-direction: column;
-  font-size: 12px; overflow: hidden;
+  font-size: 12px; overflow: hidden; resize: both;
 }
 #comp-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -61,6 +61,12 @@ const CSS = `
 }
 .comp-title { font-size: 10px; font-weight: 600; color: #666; letter-spacing: .08em; text-transform: uppercase; }
 .comp-count { font-size: 10px; color: #444; }
+.comp-header-actions { display:flex; align-items:center; gap:8px; }
+.icon-btn {
+  width: 26px; height: 24px; padding: 0; border-radius: 6px; cursor: pointer;
+  border: 1px solid #2a2a2a; background: #171717; color: #666; font-size: 13px;
+}
+.icon-btn:hover { color: #e5e5e5; border-color: #444; background: #202020; }
 .search-wrap { padding: 8px 12px; border-bottom: 1px solid #1e1e1e; flex-shrink: 0; }
 .search-input {
   width: 100%; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px;
@@ -76,7 +82,6 @@ const CSS = `
 }
 .comp-item.on-page { background: rgba(20,184,166,.05); }
 .comp-item:hover { background: #1a1a1a; }
-.comp-icon { width: 26px; height: 26px; border-radius: 6px; background: #1e1e3a; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #818cf8; font-weight: 700; }
 .comp-info { flex: 1; min-width: 0; }
 .comp-name { font-size: 11px; color: #e5e5e5; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .comp-path { font-size: 9px; color: #555; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
@@ -91,6 +96,12 @@ const CSS = `
 .action-btn.preview-btn { background: #1e1e3a; border-color: #3730a3; color: #c7d2fe; }
 .action-btn.preview-btn:hover { background: #4f46e5; border-color: #4f46e5; color: white; }
 .action-btn:disabled { opacity: .35; cursor: not-allowed; background: #1e1e1e; border-color: #2a2a2a; color: #666; }
+.action-btn.delete-btn { background: #1e1e1e; border-color: #2a2a2a; color: #777; font-size: 11px; padding: 3px 6px; line-height: 1; }
+.action-btn.delete-btn:hover { background: #7f1d1d; border-color: #dc2626; color: #fff; }
+.confirm-row { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.confirm-label { font-size: 9px; color: #f87171; white-space: nowrap; }
+.action-btn.danger { background: #7f1d1d; border-color: #dc2626; color: #fca5a5; }
+.action-btn.danger:hover { background: #dc2626; border-color: #dc2626; color: white; }
 .badge-on-page { background: #1e3a1e; color: #4ade80; border-color: #15803d; font-size: 9px; padding: 2px 5px; border-radius: 3px; border: 1px solid; margin-top: 4px; display: inline-flex; }
 .section-label { padding: 8px 12px 4px; color: #555; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; border-bottom: 1px solid #1a1a1a; }
 #empty { padding: 28px; text-align: center; color: #444; font-size: 11px; line-height: 1.6; }
@@ -105,6 +116,10 @@ export interface ComponentsPanelCallbacks {
     onEditInstances: (oids: string[], componentName: string) => void;
     /** Called when the user asks to open an off-page component preview in the browser. */
     onOpenPreview: (path: string, componentName: string) => void;
+    /** Called in insertion mode when the user picks a component to insert. */
+    onInsertComponent?: (component: ComponentInfo) => void;
+    onClose?: () => void;
+    mode?: 'browse' | 'insert';
 }
 
 export class ComponentsPanel {
@@ -121,9 +136,12 @@ export class ComponentsPanel {
     private state: 'loading' | 'error' | 'ready' = 'loading';
     private stateMessage = '';
     private unsubscribeLanguage: (() => void) | null = null;
+    private mode: 'browse' | 'insert';
+    private deleteFilePath: string | null = null;
 
     constructor(callbacks: ComponentsPanelCallbacks) {
         this.callbacks = callbacks;
+        this.mode = callbacks.mode ?? 'browse';
         document.querySelectorAll(`#${ComponentsPanel.HOST_ID}`).forEach(el => el.remove());
         this.host = document.createElement('div');
         this.host.id = ComponentsPanel.HOST_ID;
@@ -150,7 +168,10 @@ export class ComponentsPanel {
         const wrapper = document.createElement('div');
         wrapper.innerHTML = `
           <div id="comp-panel">
-            <div id="comp-header"><span class="comp-title">${t('componentsTitle')}</span></div>
+            <div id="comp-header">
+              <span class="comp-title">${this.mode === 'insert' ? t('componentsInsertTitle') : t('componentsTitle')}</span>
+              <button class="icon-btn" id="comp-close" title="${t('componentsClose')}">×</button>
+            </div>
             <div id="comp-body"><div class="state-msg state-${state}">${messages[state]}</div></div>
           </div>`;
         this.shadow.appendChild(style);
@@ -221,23 +242,30 @@ export class ComponentsPanel {
         style.textContent = CSS;
 
         const itemHtml = (c: ComponentInfo) => {
-            const initial = c.name[0]?.toUpperCase() ?? '?';
             const presence = this.presenceByFile.get(c.filePath);
             const count = presence?.count ?? 0;
+            const isConfirming = this.deleteFilePath === c.filePath;
+            const actionsHtml = isConfirming
+                ? `<div class="confirm-row">
+                     <span class="confirm-label">${t('componentsDelete')}?</span>
+                     <button class="action-btn danger" data-delete-confirm="${c.filePath}" title="${t('componentsDeleteConfirm')}">${t('componentsDeleteConfirm')}</button>
+                     <button class="action-btn" data-delete-cancel title="${t('componentsDeleteCancel')}">✕</button>
+                   </div>`
+                : `${this.mode === 'insert'
+                    ? `<button class="action-btn insert-btn" data-file="${c.filePath}" data-name="${c.name}" title="${t('componentsInsertTitle')}">${t('componentsInsert')}</button>`
+                    : count
+                    ? `<button class="action-btn edit-btn" data-file="${c.filePath}" data-name="${c.name}" title="${t('componentsEditTitle')}">${t('componentsEdit')}</button>`
+                    : `<button class="action-btn preview-btn" data-file="${c.filePath}" data-name="${c.name}" title="${t('componentsPreviewTitle')}">${t('componentsBrowser')}</button>`}
+                  <button class="action-btn open-btn" data-file="${c.filePath}" title="${t('componentsOpenEditorTitle')}">↗</button>
+                  ${this.mode !== 'insert' ? `<button class="action-btn delete-btn" data-delete-start="${c.filePath}" title="${t('componentsDeleteTitle')}" aria-label="${t('componentsDeleteTitle')}">✕</button>` : ''}`;
             return `
               <div class="comp-item${count ? ' on-page' : ''}" data-name="${c.name}" data-file="${c.filePath}" data-relpath="${c.relPath}">
-                <div class="comp-icon">${initial}</div>
                 <div class="comp-info">
                   <div class="comp-name">${c.name}</div>
                   <div class="comp-path">${c.relPath}</div>
                   ${count ? `<span class="badge-on-page">${t('componentsOnPageCount', { count })}</span>` : ''}
                 </div>
-                <div class="comp-actions">
-                  ${count
-                    ? `<button class="action-btn edit-btn" data-file="${c.filePath}" data-name="${c.name}" title="${t('componentsEditTitle')}">${t('componentsEdit')}</button>`
-                    : `<button class="action-btn preview-btn" data-file="${c.filePath}" data-name="${c.name}" title="${t('componentsPreviewTitle')}">${t('componentsBrowser')}</button>`}
-                  <button class="action-btn open-btn" data-file="${c.filePath}" title="${t('componentsOpenEditorTitle')}">↗</button>
-                </div>
+                <div class="comp-actions">${actionsHtml}</div>
               </div>`;
         };
 
@@ -252,8 +280,11 @@ export class ComponentsPanel {
         wrapper.innerHTML = `
             <div id="comp-panel">
             <div id="comp-header">
-              <span class="comp-title">${t('componentsTitle')}</span>
-              <span class="comp-count">${this.components.length}</span>
+              <span class="comp-title">${this.mode === 'insert' ? t('componentsInsertTitle') : t('componentsTitle')}</span>
+              <div class="comp-header-actions">
+                <span class="comp-count">${this.components.length}</span>
+                <button class="icon-btn" id="comp-close" title="${t('componentsClose')}">×</button>
+              </div>
             </div>
             <div class="search-wrap">
               <input class="search-input" id="comp-search" placeholder="${t('componentsSearchPlaceholder')}" value="${this.searchValue.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}" autocomplete="off" spellcheck="false" />
@@ -287,6 +318,7 @@ export class ComponentsPanel {
 
     private bindEvents(): void {
         this.blockEvents();
+        this.shadow.querySelector('#comp-close')?.addEventListener('click', () => this.callbacks.onClose?.());
 
         // Search
         const searchInput = this.shadow.querySelector('#comp-search') as HTMLInputElement | null;
@@ -327,6 +359,43 @@ export class ComponentsPanel {
             });
         });
 
+        this.shadow.querySelectorAll('.insert-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const filePath = (btn as HTMLElement).dataset.file ?? '';
+                const name = (btn as HTMLElement).dataset.name ?? '';
+                const component = this.components.find(item => item.filePath === filePath && item.name === name);
+                if (component) this.callbacks.onInsertComponent?.(component);
+            });
+        });
+
+        // Delete start — show inline confirm
+        this.shadow.querySelectorAll<HTMLElement>('[data-delete-start]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.deleteFilePath = btn.dataset.deleteStart ?? null;
+                this.render();
+            });
+        });
+
+        // Delete cancel
+        this.shadow.querySelectorAll<HTMLElement>('[data-delete-cancel]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.deleteFilePath = null;
+                this.render();
+            });
+        });
+
+        // Delete confirm
+        this.shadow.querySelectorAll<HTMLElement>('[data-delete-confirm]').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const filePath = btn.dataset.deleteConfirm ?? '';
+                await this.deleteComponent(filePath);
+            });
+        });
+
         // Open off-page component in a browser preview route.
         this.shadow.querySelectorAll('.preview-btn').forEach(btn => {
             btn.addEventListener('click', async (e) => {
@@ -347,6 +416,29 @@ export class ComponentsPanel {
                 }
             });
         });
+    }
+
+    private async deleteComponent(filePath: string): Promise<void> {
+        try {
+            const res = await fetch(`${BRIDGE}/component-delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filePath }),
+            });
+            const data = await res.json() as { ok: boolean; error?: string };
+            if (data.ok) {
+                this.deleteFilePath = null;
+                this.components = this.components.filter(c => c.filePath !== filePath);
+                this.presenceByFile.delete(filePath);
+                this.render();
+            } else {
+                this.deleteFilePath = null;
+                this.renderState('error', data.error ?? t('componentsDeleteError'));
+            }
+        } catch {
+            this.deleteFilePath = null;
+            this.renderState('error', t('componentsDeleteError'));
+        }
     }
 
     destroy(): void { this.unsubscribeLanguage?.(); this.dragCleanup?.(); this.host.remove(); }

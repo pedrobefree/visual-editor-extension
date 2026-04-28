@@ -30,6 +30,7 @@ export function getContentFromAst(ast: T.File, originalContent?: string): string
             comments: true,
             concise: false,
             minified: false,
+            jsescOption: { minimal: true },
             jsonCompatibleStrings: false,
             shouldPrintComment: () => true,
             retainFunctionParens: true,

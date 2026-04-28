@@ -1,4 +1,5 @@
-import { traverse, t, type NodePath, type T } from '../packages';
+import { DATA_OID_ATTR } from '../constants';
+import { generate, traverse, t, type NodePath, type T } from '../packages';
 import { isReactFragment } from '../helpers';
 
 export interface InsertElementSpec {
@@ -48,6 +49,14 @@ function jsxChildren(path: NodePath<T.JSXElement>): Array<T.JSXElement | T.JSXFr
     ) as Array<T.JSXElement | T.JSXFragment>;
 }
 
+function parentChildren(path: NodePath<T.JSXElement>): Array<T.JSXElement['children'][number]> | null {
+    const parentPath = path.parentPath;
+    if (!parentPath) return null;
+    if (parentPath.isJSXElement()) return parentPath.node.children;
+    if (parentPath.isJSXFragment()) return parentPath.node.children;
+    return null;
+}
+
 export function insertElementAtPath(
     path: NodePath<T.JSXElement>,
     spec: InsertElementSpec,
@@ -83,8 +92,222 @@ export function insertElementAtPath(
 }
 
 export function removeElementAtPath(path: NodePath<T.JSXElement>): boolean {
-    if (!path.parentPath || !path.parentPath.isJSXElement()) return false;
+    const children = parentChildren(path);
+    if (!children) return false;
     path.remove();
+    return true;
+}
+
+function removeOidAttributes(node: T.JSXElement | T.JSXFragment): void {
+    if (t.isJSXElement(node)) {
+        node.openingElement.attributes = node.openingElement.attributes.filter(attr =>
+            !(t.isJSXAttribute(attr) && t.isJSXIdentifier(attr.name) && attr.name.name === DATA_OID_ATTR),
+        );
+    }
+    const children = t.isJSXElement(node) ? node.children : node.children;
+    for (const child of children) {
+        if (t.isJSXElement(child) || t.isJSXFragment(child)) removeOidAttributes(child);
+    }
+}
+
+function removeWhitespaceOnlyJsxText(node: T.JSXElement | T.JSXFragment): void {
+    const children = t.isJSXElement(node) ? node.children : node.children;
+    const nextChildren = children.filter(child => !(t.isJSXText(child) && child.value.trim() === ''));
+    children.splice(0, children.length, ...nextChildren);
+    for (const child of children) {
+        if (t.isJSXElement(child) || t.isJSXFragment(child)) removeWhitespaceOnlyJsxText(child);
+    }
+}
+
+interface ExtractedProp {
+    name: string;
+    value: string;
+    kind: 'text' | 'attr' | 'class';
+}
+
+function propName(base: string, index: number): string {
+    return index <= 1 ? base : `${base}${index}`;
+}
+
+function inferComponentProps(node: T.JSXElement | T.JSXFragment): ExtractedProp[] {
+    const props: ExtractedProp[] = [];
+    let textCount = 0;
+    let imageCount = 0;
+    let classCount = 0;
+
+    const visit = (current: T.JSXElement | T.JSXFragment) => {
+        if (t.isJSXElement(current)) {
+            const classAttr = current.openingElement.attributes.find(candidate =>
+                t.isJSXAttribute(candidate) &&
+                t.isJSXIdentifier(candidate.name) &&
+                candidate.name.name === 'className' &&
+                t.isStringLiteral(candidate.value),
+            ) as T.JSXAttribute | undefined;
+            if (classAttr && t.isStringLiteral(classAttr.value)) {
+                classCount += 1;
+                const name = propName('className', classCount);
+                props.push({ name, value: classAttr.value.value, kind: 'class' });
+                classAttr.value = t.jsxExpressionContainer(t.identifier(name));
+            }
+
+            const tag = current.openingElement.name;
+            if (t.isJSXIdentifier(tag) && tag.name === 'img') {
+                imageCount += 1;
+                for (const attrName of ['src', 'alt']) {
+                    const attr = current.openingElement.attributes.find(candidate =>
+                        t.isJSXAttribute(candidate) &&
+                        t.isJSXIdentifier(candidate.name) &&
+                        candidate.name.name === attrName &&
+                        t.isStringLiteral(candidate.value),
+                    ) as T.JSXAttribute | undefined;
+                    if (!attr || !t.isStringLiteral(attr.value)) continue;
+                    const name = propName(attrName === 'src' ? 'imageSrc' : 'imageAlt', imageCount);
+                    props.push({ name, value: attr.value.value, kind: 'attr' });
+                    attr.value = t.jsxExpressionContainer(t.identifier(name));
+                }
+            }
+
+            current.children = current.children.map(child => {
+                if (t.isJSXText(child) && child.value.trim()) {
+                    textCount += 1;
+                    const name = propName('text', textCount);
+                    const value = child.value.trim();
+                    props.push({ name, value, kind: 'text' });
+                    return t.jsxExpressionContainer(t.identifier(name));
+                }
+                if (t.isJSXElement(child) || t.isJSXFragment(child)) visit(child);
+                return child;
+            });
+            return;
+        }
+
+        current.children.forEach(child => {
+            if (t.isJSXElement(child) || t.isJSXFragment(child)) visit(child);
+        });
+    };
+
+    visit(node);
+    return props;
+}
+
+function extractedPropsInterface(componentName: string, props: ExtractedProp[]): string {
+    if (!props.length) return '';
+    const fields = props.map(prop => `  ${prop.name}?: string;`).join('\n');
+    return `export interface ${componentName}Props {\n${fields}\n}\n\n`;
+}
+
+function extractedPropsSignature(componentName: string, props: ExtractedProp[]): string {
+    if (!props.length) return '';
+    const defaults = props
+        .map(prop => `${prop.name} = ${JSON.stringify(prop.value)}`)
+        .join(', ');
+    return `{ ${defaults} }: ${componentName}Props`;
+}
+
+export function duplicateElementAtPath(path: NodePath<T.JSXElement>): boolean {
+    const children = parentChildren(path);
+    const currentNode = path.node;
+    const clone = t.cloneNode(currentNode, true);
+    removeOidAttributes(clone);
+
+    if (children) {
+        const currentChildIndex = children.findIndex(child => child === currentNode);
+        if (currentChildIndex === -1) return false;
+        children.splice(currentChildIndex + 1, 0, clone);
+        return true;
+    }
+
+    const parentPath = path.parentPath;
+    if (!parentPath) return false;
+    const fragment = t.jsxFragment(
+        t.jsxOpeningFragment(),
+        t.jsxClosingFragment(),
+        [currentNode, clone],
+    );
+
+    if (parentPath.isReturnStatement() && parentPath.node.argument === currentNode) {
+        parentPath.node.argument = fragment;
+        return true;
+    }
+
+    if (parentPath.isArrowFunctionExpression() && parentPath.node.body === currentNode) {
+        parentPath.node.body = fragment;
+        return true;
+    }
+
+    return true;
+}
+
+export function extractElementToComponentAtPath(path: NodePath<T.JSXElement>, componentName: string): string | null {
+    if (!/^[A-Z][A-Za-z0-9]*$/.test(componentName)) return null;
+
+    const clone = t.cloneNode(path.node, true);
+    removeOidAttributes(clone);
+    removeWhitespaceOnlyJsxText(clone);
+    const inferredProps = inferComponentProps(clone);
+
+    const replacement = t.jsxElement(
+        t.jsxOpeningElement(
+            t.jsxIdentifier(componentName),
+            inferredProps.map(prop => t.jsxAttribute(t.jsxIdentifier(prop.name), t.stringLiteral(prop.value))),
+            true,
+        ),
+        null,
+        [],
+        true,
+    );
+    path.replaceWith(replacement);
+
+    const jsx = generate(clone, { jsescOption: { minimal: true } }).code;
+    const propsInterface = extractedPropsInterface(componentName, inferredProps);
+    const signature = extractedPropsSignature(componentName, inferredProps);
+    return `${propsInterface}export function ${componentName}(${signature}) {\n  return (\n    ${jsx}\n  );\n}\n`;
+}
+
+export function moveElementToParentPath(
+    path: NodePath<T.JSXElement>,
+    parentPath: NodePath<T.JSXElement>,
+    placement: InsertPlacement = 'append',
+    index?: number,
+): boolean {
+    const sourceChildren = parentChildren(path);
+    if (!sourceChildren) return false;
+    if (path.node === parentPath.node) return false;
+
+    let cursor: NodePath | null = parentPath;
+    while (cursor) {
+        if (cursor.node === path.node) return false;
+        cursor = cursor.parentPath;
+    }
+
+    const currentNode = path.node;
+    const currentChildIndex = sourceChildren.findIndex(child => child === currentNode);
+    if (currentChildIndex === -1) return false;
+
+    sourceChildren.splice(currentChildIndex, 1);
+    const destination = parentPath.node.children;
+
+    if (placement === 'prepend') {
+        destination.unshift(currentNode);
+        return true;
+    }
+
+    if (placement === 'index') {
+        const jsx = destination.filter(
+            child => t.isJSXElement(child) || t.isJSXFragment(child),
+        ) as Array<T.JSXElement | T.JSXFragment>;
+        const safeIndex = Math.max(0, Math.min(index ?? jsx.length, jsx.length));
+        const targetChild = jsx[safeIndex];
+        if (!targetChild) {
+            destination.push(currentNode);
+            return true;
+        }
+        const insertionIndex = destination.indexOf(targetChild);
+        destination.splice(insertionIndex === -1 ? destination.length : insertionIndex, 0, currentNode);
+        return true;
+    }
+
+    destination.push(currentNode);
     return true;
 }
 

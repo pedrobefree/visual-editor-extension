@@ -3,6 +3,7 @@ import { VisualEditToolbar } from './toolbar';
 import { LayerPanel } from './layer-panel';
 import { ThemePanel } from './theme-panel';
 import { ComponentsPanel } from './components-panel';
+import { AssetsPanel, type AssetInfo } from './assets-panel';
 import { loadLanguage, t } from './i18n';
 
 const BRIDGE = 'http://localhost:5179';
@@ -26,6 +27,13 @@ interface ComponentInfo {
     exports: string[];
 }
 
+interface InsertElementSpec {
+    tagName: string;
+    attributes?: Record<string, string | number | boolean | null | undefined>;
+    textContent?: string | null;
+    children?: InsertElementSpec[];
+}
+
 let enabled = false;
 let selectedEl: HTMLElement | null = null;
 let selectedOid = '';
@@ -35,6 +43,7 @@ let toolbar: VisualEditToolbar | null = null;
 let layerPanel: LayerPanel | null = null;
 let themePanel: ThemePanel | null = null;
 let componentsPanel: ComponentsPanel | null = null;
+let assetsPanel: AssetsPanel | null = null;
 let outlineStyle: HTMLStyleElement | null = null;
 let hoverEl: HTMLElement | null = null;
 let hoverOverlay: HTMLElement | null = null;
@@ -45,6 +54,24 @@ let responsivePrefix = '';
 let componentRootOids = new Set<string>();
 let oidFileByOid = new Map<string, string>();
 let copyStyleTargetOid: string | null = null;
+
+function closeAssetsPanel(): void {
+    assetsPanel?.destroy();
+    assetsPanel = null;
+    toolbar?.setAssetsActive(false);
+}
+
+function openAssetsPanel(): void {
+    if (assetsPanel) {
+        toolbar?.setAssetsActive(true);
+        return;
+    }
+    assetsPanel = new AssetsPanel({
+        onUseAsset: (asset) => { void applyAssetToSelection(asset); },
+        onClose: () => closeAssetsPanel(),
+    });
+    toolbar?.setAssetsActive(true);
+}
 
 /* ── Overlay ── */
 function getOrCreateOverlay(): HTMLElement {
@@ -291,8 +318,9 @@ function selectedInstanceInfo(oid: string): { instanceIndex: number; instanceCou
         }
         parent = parent.parentElement;
     }
+    const absoluteIndex = selectedEl ? all.indexOf(selectedEl) : -1;
     return {
-        instanceIndex: Math.max(0, selectedEl ? all.indexOf(selectedEl) : 0),
+        instanceIndex: Math.max(0, absoluteIndex),
         instanceCount: all.length,
         ancestorOids,
     };
@@ -304,7 +332,7 @@ async function bridgeEdit(oid: string, kind: string, payload: string, currentTex
         const res = await fetch(`${BRIDGE}/edit`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ oid, kind, payload, currentText, scope, ...instance }),
+            body: JSON.stringify({ oid, kind, payload, currentText, scope, isComponentRoot: componentRootOids.has(oid), ...instance }),
         });
         const data = await res.json();
         return { ok: data.ok === true, error: data.error };
@@ -313,12 +341,13 @@ async function bridgeEdit(oid: string, kind: string, payload: string, currentTex
     }
 }
 
-async function bridgeStructureEdit(oid: string, kind: 'insert' | 'remove' | 'move', payload: unknown): Promise<EditResponse> {
+async function bridgeStructureEdit(oid: string, kind: 'insert' | 'remove' | 'move' | 'duplicate' | 'componentize' | 'insert-component', payload: unknown, isComponentRoot?: boolean): Promise<EditResponse> {
     try {
+        const instance = selectedInstanceInfo(oid);
         const res = await fetch(`${BRIDGE}/edit`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ oid, kind, payload }),
+            body: JSON.stringify({ oid, kind, payload, currentText: selectedEl?.innerText?.trim() || selectedEl?.textContent?.trim(), isComponentRoot, ...instance }),
         });
         const data = await res.json();
         return { ok: data.ok === true, error: data.error };
@@ -333,8 +362,18 @@ async function bridgeEditAttr(oid: string, propName: string, payload: string, cu
         const res = await fetch(`${BRIDGE}/edit`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ oid, kind: 'attr', propName, payload, currentText, scope, ...instance }),
+            body: JSON.stringify({ oid, kind: 'attr', propName, payload, currentText, scope, isComponentRoot: componentRootOids.has(oid), ...instance }),
         });
+        const data = await res.json();
+        return { ok: data.ok === true, error: data.error };
+    } catch {
+        return { ok: false, error: t('bridgeOfflineShort') };
+    }
+}
+
+async function bridgeUndo(): Promise<EditResponse> {
+    try {
+        const res = await fetch(`${BRIDGE}/undo`, { method: 'POST' });
         const data = await res.json();
         return { ok: data.ok === true, error: data.error };
     } catch {
@@ -482,20 +521,51 @@ function elementChildrenWithOid(parent: HTMLElement): HTMLElement[] {
 }
 
 function refreshPanelsSoon(): void {
-    setTimeout(() => {
+    const refresh = () => {
         void loadComponentContext();
         layerPanel?.refresh();
         layerPanel?.setSelectedElement(selectedEl);
         scheduleOverlayUpdate();
-    }, 250);
+    };
+    setTimeout(refresh, 250);
+    setTimeout(refresh, 900);
+    setTimeout(refresh, 1800);
+}
+
+async function handleGlobalUndo(): Promise<void> {
+    const result = await bridgeUndo();
+    if (result.ok) {
+        deselect();
+        refreshPanelsSoon();
+        showPageToast(t('globalUndoSuccess'), 'success');
+    } else {
+        const message = result.error === 'Nothing to undo'
+            ? t('globalUndoEmpty')
+            : result.error ?? t('globalUndoError');
+        showPageToast(message, 'error');
+    }
+}
+
+function selectDuplicatedSibling(originalEl: HTMLElement): void {
+    const parent = originalEl.parentElement;
+    if (!parent) return;
+    const siblings = elementChildrenWithOid(parent);
+    const originalIndex = siblings.findIndex(node => node === originalEl);
+    const copy = originalIndex >= 0 ? siblings[originalIndex + 1] : null;
+    const copyOid = copy?.getAttribute(OID_ATTR);
+    if (copy && copyOid) selectElement(copy, copyOid);
 }
 
 function insertionRequestForSelection(el: HTMLElement, preset: 'text' | 'button' | 'group' | 'image') {
+    return insertionRequestForSpec(el, createInsertPreset(preset));
+}
+
+function insertionRequestForSpec(el: HTMLElement, element: InsertElementSpec) {
     if (isContainerElement(el)) {
         return {
             parentOid: el.getAttribute(OID_ATTR)!,
             placement: 'append' as const,
-            element: createInsertPreset(preset),
+            element,
         };
     }
 
@@ -511,7 +581,7 @@ function insertionRequestForSelection(el: HTMLElement, preset: 'text' | 'button'
                 parentOid: parent.getAttribute(OID_ATTR)!,
                 placement: 'index' as const,
                 index: currentIndex + 1,
-                element: createInsertPreset(preset),
+                element,
             };
         }
         current = parent;
@@ -530,8 +600,68 @@ async function handleInsertElement(preset: 'text' | 'button' | 'group' | 'image'
     return result;
 }
 
+async function handleInsertComponentInfo(component: ComponentInfo): Promise<EditResponse> {
+    if (!selectedEl) return { ok: false, error: t('structureNoSelection') };
+    const oid = selectedEl.getAttribute(OID_ATTR);
+    if (!oid) return { ok: false, error: t('structureNoSelection') };
+    const exportName = component.name;
+    const isButtonLike = /button/i.test(exportName);
+    const payload = insertionRequestForSpec(selectedEl, {
+        tagName: exportName,
+        textContent: isButtonLike ? t('insertDefaultButton') : undefined,
+    });
+    if (!payload) return { ok: false, error: t('structureInsertUnavailable') };
+    const result = await bridgeStructureEdit(oid, 'insert-component', {
+        ...payload,
+        componentName: exportName,
+        filePath: component.filePath,
+    });
+    if (result.ok) refreshPanelsSoon();
+    return result;
+}
+
+function openComponentsPanel(mode: 'browse' | 'insert' = 'browse'): void {
+    componentsPanel?.destroy();
+    componentsPanel = new ComponentsPanel({
+        mode,
+        onClose: () => {
+            componentsPanel?.destroy();
+            componentsPanel = null;
+            toolbar?.setComponentsActive(false);
+        },
+        onInsertComponent: (component) => {
+            void handleInsertComponentInfo(component).then(result => {
+                showPageToast(result.ok ? t('panelInsertComponentSuccess') : result.error ?? t('panelStructureError'), result.ok ? 'success' : 'error');
+                if (result.ok && mode === 'insert') {
+                    componentsPanel?.destroy();
+                    componentsPanel = null;
+                    toolbar?.setComponentsActive(false);
+                }
+            });
+        },
+        onEditInstances: (oids, componentName) => {
+            const elements = elementsForOids(oids);
+            const first = elements[0];
+            if (!first) {
+                showPageToast(t('noInstancesOnPage'), 'error');
+                return;
+            }
+            first.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+            showComponentOverlays(elements);
+            selectElement(first, first.getAttribute(OID_ATTR) ?? '');
+            showPageToast(t('instancesOnPage', { name: componentName, count: elements.length }), 'success');
+        },
+        onOpenPreview: (path, componentName) => {
+            const url = new URL(path, window.location.origin);
+            window.open(url.toString(), '_blank', 'noopener,noreferrer');
+            showPageToast(t('previewOpenedBrowser', { name: componentName }), 'success');
+        },
+    });
+    toolbar?.setComponentsActive(true);
+}
+
 async function handleRemoveElement(oid: string): Promise<EditResponse> {
-    const result = await bridgeStructureEdit(oid, 'remove', null);
+    const result = await bridgeStructureEdit(oid, 'remove', null, componentRootOids.has(oid));
     if (result.ok) {
         if (selectedEl?.getAttribute(OID_ATTR) === oid) deselect();
         refreshPanelsSoon();
@@ -539,13 +669,26 @@ async function handleRemoveElement(oid: string): Promise<EditResponse> {
     return result;
 }
 
-function applyLocalMove(el: HTMLElement, nextIndex: number): void {
-    const parent = el.parentElement;
-    if (!parent) return;
-    const siblings = elementChildrenWithOid(parent);
-    const reordered = siblings.filter(node => node !== el);
-    reordered.splice(nextIndex, 0, el);
-    reordered.forEach(node => parent.appendChild(node));
+async function handleDuplicateElement(oid: string): Promise<EditResponse> {
+    const originalEl = selectedEl?.getAttribute(OID_ATTR) === oid ? selectedEl : document.querySelector<HTMLElement>(oidSelector(oid));
+    const result = await bridgeStructureEdit(oid, 'duplicate', null, componentRootOids.has(oid));
+    if (result.ok) {
+        refreshPanelsSoon();
+        if (originalEl) {
+            setTimeout(() => selectDuplicatedSibling(originalEl), 350);
+            setTimeout(() => selectDuplicatedSibling(originalEl), 900);
+        }
+    }
+    return result;
+}
+
+async function handleCreateComponent(oid: string, name: string): Promise<EditResponse> {
+    const result = await bridgeStructureEdit(oid, 'componentize', { name });
+    if (result.ok) {
+        deselect();
+        refreshPanelsSoon();
+    }
+    return result;
 }
 
 async function handleMoveElement(oid: string, direction: 'up' | 'down', targetEl?: HTMLElement): Promise<EditResponse> {
@@ -566,12 +709,49 @@ async function handleMoveElement(oid: string, direction: 'up' | 'down', targetEl
         position: direction === 'up' ? 'before' : 'after',
     });
     if (result.ok) {
-        applyLocalMove(el, nextIndex);
-        selectedEl = el;
-        layerPanel?.refresh();
-        layerPanel?.setSelectedElement(el);
-        moveOverlay(el);
-        scheduleOverlayUpdate();
+        setTimeout(() => {
+            const next = document.querySelector<HTMLElement>(oidSelector(oid));
+            if (!next) return;
+            selectedEl = next;
+            layerPanel?.refresh();
+            layerPanel?.setSelectedElement(next);
+            moveOverlay(next);
+            scheduleOverlayUpdate();
+        }, 40);
+        refreshPanelsSoon();
+    }
+    return result;
+}
+
+function isDescendantElement(parent: HTMLElement, child: HTMLElement): boolean {
+    let current = child.parentElement;
+    while (current) {
+        if (current === parent) return true;
+        current = current.parentElement;
+    }
+    return false;
+}
+
+async function handleMoveElementToContainer(oid: string, targetOid: string, sourceEl: HTMLElement, targetEl: HTMLElement): Promise<EditResponse> {
+    if (!isContainerElement(targetEl)) return { ok: false, error: t('structureInsertUnavailable') };
+    if (sourceEl === targetEl || isDescendantElement(sourceEl, targetEl)) return { ok: false, error: t('structureMoveUnavailable') };
+
+    selectedEl = sourceEl;
+    const result = await bridgeStructureEdit(oid, 'move', {
+        index: elementChildrenWithOid(targetEl).length,
+        parentOid: targetOid,
+        placement: 'append',
+    });
+    if (result.ok) {
+        setTimeout(() => {
+            const next = document.querySelector<HTMLElement>(oidSelector(oid));
+            if (!next) return;
+            selectedEl = next;
+            layerPanel?.refresh();
+            layerPanel?.setSelectedElement(next);
+            moveOverlay(next);
+            scheduleOverlayUpdate();
+        }, 40);
         refreshPanelsSoon();
     }
     return result;
@@ -648,6 +828,44 @@ async function applyCopiedStyle(sourceEl: HTMLElement): Promise<void> {
     }
 }
 
+async function applyAssetToSelection(asset: AssetInfo): Promise<void> {
+    if (!selectedEl) {
+        showPageToast(t('structureNoSelection'), 'error');
+        return;
+    }
+
+    const oid = selectedEl.getAttribute(OID_ATTR);
+    if (!oid) {
+        showPageToast(t('structureNoSelection'), 'error');
+        return;
+    }
+
+    if (selectedEl.tagName.toLowerCase() === 'img') {
+        const currentSrc = selectedEl.getAttribute('src') ?? '';
+        selectedEl.setAttribute('src', asset.runtimePath);
+        const result = await bridgeEditAttr(oid, 'src', asset.runtimePath, currentSrc, 'instance');
+        if (result.ok) selectElement(selectedEl, oid);
+        showPageToast(result.ok ? t('panelImageSrcSaved') : result.error ?? t('panelImageSrcSaveError'), result.ok ? 'success' : 'error');
+        return;
+    }
+
+    const payload = insertionRequestForSpec(selectedEl, {
+        tagName: 'img',
+        attributes: {
+            src: asset.runtimePath,
+            alt: asset.name.replace(/\.[a-z0-9]+$/i, ''),
+            className: projectClassesForTag('img') || 'w-32 h-32 object-cover rounded-md',
+        },
+    });
+    if (!payload) {
+        showPageToast(t('structureInsertUnavailable'), 'error');
+        return;
+    }
+    const result = await bridgeStructureEdit(oid, 'insert', payload);
+    if (result.ok) refreshPanelsSoon();
+    showPageToast(result.ok ? t('panelInsertSuccess') : result.error ?? t('panelStructureError'), result.ok ? 'success' : 'error');
+}
+
 /* ── Mouse events ── */
 function onMouseMove(e: MouseEvent): void {
     if (!enabled || selectedEl) return;
@@ -668,7 +886,7 @@ function onMouseMove(e: MouseEvent): void {
 }
 
 /** IDs of all shadow-DOM panel host elements managed by this extension. */
-const VE_HOST_IDS = ['ve-panel-host', 've-toolbar-host', 've-layer-host', 've-theme-host', 've-components-host'];
+const VE_HOST_IDS = ['ve-panel-host', 've-toolbar-host', 've-layer-host', 've-theme-host', 've-components-host', 've-assets-host'];
 
 /** Retorna true se o clique veio de dentro de qualquer panel shadow-DOM do VE. */
 function isInsidePanel(e: MouseEvent): boolean {
@@ -757,6 +975,18 @@ function onDblClick(e: MouseEvent): void {
 
 function onKeyDown(e: KeyboardEvent): void {
     if (!enabled) return;
+    const target = e.target as HTMLElement | null;
+    const isEditableTarget =
+        target?.isContentEditable ||
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement;
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !isEditableTarget) {
+        e.preventDefault();
+        e.stopPropagation();
+        void handleGlobalUndo();
+        return;
+    }
     if (e.key === 'Escape' && copyStyleTargetOid) {
         copyStyleTargetOid = null;
         showPageToast(t('panelCopyStyleCancelled'), 'error');
@@ -792,8 +1022,15 @@ function selectElement(el: HTMLElement, oid: string): void {
             onTextApply: async (o, text, orig, scope) => bridgeEdit(o, 'text', text, orig, scope),
             onAttrApply: async (o, attr, val, cur, scope) => bridgeEditAttr(o, attr, val, cur, scope),
             onInsertElement: async (_o, preset) => handleInsertElement(preset),
+            onInsertComponent: async () => {
+                openComponentsPanel('insert');
+                return { ok: true };
+            },
             onRemoveElement: async (o) => handleRemoveElement(o),
+            onDuplicateElement: async (o) => handleDuplicateElement(o),
+            onCreateComponent: async (o, name) => handleCreateComponent(o, name),
             onStartCopyStyle: (o) => startCopyStyleMode(o),
+            onOpenAssets: () => openAssetsPanel(),
             onClose: deselect,
         });
     }
@@ -838,6 +1075,11 @@ function enable(): void {
                 toolbar?.setTreeActive(false);
             } else {
                 layerPanel = new LayerPanel({
+                    onClose: () => {
+                        layerPanel?.destroy();
+                        layerPanel = null;
+                        toolbar?.setTreeActive(false);
+                    },
                     onSelect: (el, oid) => {
                         // Select the element as if the user clicked it
                         clearComponentOverlays();
@@ -846,6 +1088,11 @@ function enable(): void {
                     onHover: (el) => showTreeHover(el),
                     onMove: (el, oid, direction) => {
                         void handleMoveElement(oid, direction, el).then(result => {
+                            showPageToast(result.ok ? t('panelMoveSuccess') : result.error ?? t('panelStructureError'), result.ok ? 'success' : 'error');
+                        });
+                    },
+                    onMoveToContainer: (el, oid, targetEl, targetOid) => {
+                        void handleMoveElementToContainer(oid, targetOid, el, targetEl).then(result => {
                             showPageToast(result.ok ? t('panelMoveSuccess') : result.error ?? t('panelStructureError'), result.ok ? 'success' : 'error');
                         });
                     },
@@ -860,27 +1107,18 @@ function enable(): void {
                 componentsPanel = null;
                 toolbar?.setComponentsActive(false);
             } else {
-                componentsPanel = new ComponentsPanel({
-                    onEditInstances: (oids, componentName) => {
-                        const elements = elementsForOids(oids);
-                        const first = elements[0];
-                        if (!first) {
-                            showPageToast(t('noInstancesOnPage'), 'error');
-                            return;
-                        }
-                        first.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-                        showComponentOverlays(elements);
-                        selectElement(first, first.getAttribute(OID_ATTR) ?? '');
-                        showPageToast(t('instancesOnPage', { name: componentName, count: elements.length }), 'success');
-                    },
-                    onOpenPreview: (path, componentName) => {
-                        const url = new URL(path, window.location.origin);
-                        window.open(url.toString(), '_blank', 'noopener,noreferrer');
-                        showPageToast(t('previewOpenedBrowser', { name: componentName }), 'success');
-                    },
-                });
-                toolbar?.setComponentsActive(true);
+                openComponentsPanel('browse');
             }
+        },
+        onAssets: () => {
+            if (assetsPanel) {
+                closeAssetsPanel();
+            } else {
+                openAssetsPanel();
+            }
+        },
+        onUndo: () => {
+            void handleGlobalUndo();
         },
         onOutline: (active) => setOutline(active),
         onBreakpoint: (prefix, width) => setResponsivePreview(prefix, width),
@@ -914,6 +1152,7 @@ function disable(): void {
     layerPanel?.destroy(); layerPanel = null;
     themePanel?.destroy(); themePanel = null;
     componentsPanel?.destroy(); componentsPanel = null;
+    closeAssetsPanel();
     setOutline(false);
     setResponsivePreview('', null);
     responsiveStyle?.remove();

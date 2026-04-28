@@ -29,7 +29,7 @@ A bridge sobe automaticamente junto com o servidor de desenvolvimento.
 
 O Visual Edit opera com duas partes:
 
-1. **Plugin Vite/Babel** — injeta marcadores `data-oid` no seu JSX em tempo de compilação para que a extensão consiga identificar cada elemento
+1. **Plugin de build** — injeta marcadores `data-oid` no seu JSX em tempo de compilação para que a extensão consiga identificar cada elemento (Vite plugin ou Next.js webpack loader)
 2. **Bridge server** — servidor HTTP local (porta 5179) que recebe as edições da extensão e as aplica nos seus arquivos-fonte
 
 Após rodar `npx befree-visual-edit init`, o `npm run dev` já inicia os dois juntos.
@@ -69,15 +69,33 @@ export default defineConfig({
 
 ## Configuração manual — Next.js
 
-```json
-// .babelrc
-{
-  "presets": ["next/babel"],
-  "plugins": ["befree-visual-edit/babel"]
-}
+```js
+// next.config.mjs
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+
+const withBefreeVisualEdit = (nextConfig = {}) => ({
+  ...nextConfig,
+  webpack(config, options) {
+    config.module.rules.push({
+      test: /\.(tsx|jsx)$/,
+      exclude: /node_modules/,
+      use: [require.resolve('befree-visual-edit/next-loader')],
+    });
+
+    if (typeof nextConfig.webpack === 'function') {
+      return nextConfig.webpack(config, options);
+    }
+
+    return config;
+  },
+});
+
+export default withBefreeVisualEdit({});
 ```
 
-> **Atenção:** usar o plugin Babel no Next.js desativa a compilação SWC. Isso é esperado em ambiente de desenvolvimento.
+> O Next.js usa um webpack loader para manter SWC ativo. Não crie `.babelrc` para esse pacote, pois Babel conflita com `next/font`.
 
 ---
 
@@ -87,7 +105,7 @@ export default defineConfig({
 |--------|-----------------|
 | `packages/befree-visual-edit` | Pacote publicado no npm — CLI + plugins |
 | `packages/bridge` | Servidor HTTP local que aplica edições nos arquivos |
-| `packages/setup` | Vite plugin, Babel plugin e script de init |
+| `packages/setup` | Vite plugin, Next.js loader, Babel plugin legado e script de init |
 | `packages/parser` | Manipulação de AST (OIDs, Tailwind, texto) |
 | `packages/extension` | Extensão Chrome |
 

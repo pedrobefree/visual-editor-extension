@@ -39,6 +39,9 @@ await Bun.build({
 // Copy static files
 copyFileSync(join(ROOT, 'popup.html'), join(OUT, 'popup.html'));
 if (existsSync(join(ROOT, 'logo-white.png'))) copyFileSync(join(ROOT, 'logo-white.png'), join(OUT, 'logo-white.png'));
+if (existsSync(join(ROOT, '..', '..', 'logo-highlight.png'))) {
+    copyFileSync(join(ROOT, '..', '..', 'logo-highlight.png'), join(OUT, 'logo-highlight.png'));
+}
 
 // Copy icons exactly from packages/extension/icons.
 const iconsDir = join(ROOT, 'icons');

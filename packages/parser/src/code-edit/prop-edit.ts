@@ -1,4 +1,4 @@
-import { t, traverse, type T } from '../packages';
+import { t, traverse, type NodePath, type T } from '../packages';
 
 /**
  * If the named JSX attribute's value is a single identifier expression like
@@ -19,23 +19,24 @@ export function getAttrIdentifier(node: T.JSXElement, attrName: string): string 
 
 /**
  * Finds the named attribute on the JSX element and replaces its string-literal
- * value with newValue. Returns true if the attribute was found and changed.
+ * value with newValue. Dynamic attributes are converted to a string literal
+ * when the caller explicitly edits the component/template. If the attribute is
+ * missing, creates it as a string literal.
  */
 export function updateNodeAttrValue(node: T.JSXElement, attrName: string, newValue: string): boolean {
     const opening = node.openingElement;
     for (const attr of opening.attributes) {
         if (!t.isJSXAttribute(attr)) continue;
         if (!t.isJSXIdentifier(attr.name) || attr.name.name !== attrName) continue;
-        if (!t.isStringLiteral(attr.value)) return false;
-
-        attr.value.value = newValue;
+        attr.value = t.stringLiteral(newValue);
         if (attr.value.extra) {
             (attr.value.extra as Record<string, unknown>).rawValue = newValue;
             (attr.value.extra as Record<string, unknown>).raw = `"${newValue}"`;
         }
         return true;
     }
-    return false;
+    opening.attributes.push(t.jsxAttribute(t.jsxIdentifier(attrName), t.stringLiteral(newValue)));
+    return true;
 }
 
 /**
@@ -186,22 +187,25 @@ export function updatePropValueAtIndex(
             const matchingAttr = path.node.attributes.find(attr =>
                 t.isJSXAttribute(attr) &&
                 t.isJSXIdentifier(attr.name) &&
-                attr.name.name === propName &&
-                t.isStringLiteral(attr.value),
+                attr.name.name === propName,
             ) as T.JSXAttribute | undefined;
-            if (!matchingAttr || !t.isStringLiteral(matchingAttr.value)) return;
 
             if (seen !== matchIndex) {
                 seen += 1;
                 return;
             }
 
-            if (oldValue !== undefined && matchingAttr.value.value !== oldValue) return;
+            if (matchingAttr) {
+                if (!t.isStringLiteral(matchingAttr.value)) return;
+                if (oldValue !== undefined && matchingAttr.value.value !== oldValue) return;
 
-            matchingAttr.value.value = newValue;
-            if (matchingAttr.value.extra) {
-                (matchingAttr.value.extra as Record<string, unknown>).rawValue = newValue;
-                (matchingAttr.value.extra as Record<string, unknown>).raw = `"${newValue}"`;
+                matchingAttr.value.value = newValue;
+                if (matchingAttr.value.extra) {
+                    (matchingAttr.value.extra as Record<string, unknown>).rawValue = newValue;
+                    (matchingAttr.value.extra as Record<string, unknown>).raw = `"${newValue}"`;
+                }
+            } else {
+                path.node.attributes.push(t.jsxAttribute(t.jsxIdentifier(propName), t.stringLiteral(newValue)));
             }
             changed = true;
             path.stop();
@@ -330,6 +334,167 @@ export function updateComponentUsageStringPropAtIndex(
             } else {
                 path.node.attributes.push(t.jsxAttribute(t.jsxIdentifier(propName), t.stringLiteral(value)));
             }
+            changed = true;
+            path.stop();
+        },
+    });
+
+    return changed;
+}
+
+function replaceUsageTextChildren(node: T.JSXElement, value: string): void {
+    node.openingElement.selfClosing = false;
+    const name = node.openingElement.name;
+    node.closingElement = t.jsxClosingElement(t.isJSXIdentifier(name) ? t.jsxIdentifier(name.name) : t.jsxIdentifier('Component'));
+    node.children = [t.jsxText(value)];
+}
+
+function usageTextContent(node: T.JSXElement): string {
+    return node.children
+        .map(child => t.isJSXText(child) ? child.value : '')
+        .join('')
+        .trim();
+}
+
+export function updateComponentUsageChildrenAtIndex(
+    ast: T.File,
+    componentNames: string[],
+    value: string,
+    matchIndex: number,
+): boolean {
+    let seen = 0;
+    let changed = false;
+    const nameSet = new Set(componentNames);
+
+    traverse(ast, {
+        JSXElement(path) {
+            if (changed) return;
+            if (!isNamedComponentUsage(path, nameSet)) return;
+
+            if (seen !== matchIndex) {
+                seen += 1;
+                return;
+            }
+
+            replaceUsageTextChildren(path.node, value);
+            changed = true;
+            path.stop();
+        },
+    });
+
+    return changed;
+}
+
+function componentUsageChildren(path: NodePath<T.JSXElement>): Array<T.JSXElement['children'][number]> | null {
+    const parentPath = path.parentPath;
+    if (!parentPath) return null;
+    if (parentPath.isJSXElement()) return parentPath.node.children;
+    if (parentPath.isJSXFragment()) return parentPath.node.children;
+    return null;
+}
+
+function hasMatchingText(path: NodePath<T.JSXElement>, text?: string): boolean {
+    if (!text?.trim()) return false;
+    return usageTextContent(path.node) === text.trim();
+}
+
+function isNamedComponentUsage(path: NodePath<T.JSXElement>, componentNames: Set<string>): boolean {
+    const nameNode = path.node.openingElement.name;
+    return t.isJSXIdentifier(nameNode) && componentNames.has(nameNode.name);
+}
+
+function stripUsageOidAttributes(node: T.JSXElement): void {
+    node.openingElement.attributes = node.openingElement.attributes.filter(attr =>
+        !(t.isJSXAttribute(attr) && t.isJSXIdentifier(attr.name) && attr.name.name === 'data-oid'),
+    );
+}
+
+export function duplicateComponentUsageAtIndex(
+    ast: T.File,
+    componentNames: string[],
+    matchIndex: number,
+): boolean {
+    let seen = 0;
+    let changed = false;
+    const nameSet = new Set(componentNames);
+
+    traverse(ast, {
+        JSXElement(path) {
+            if (changed) return;
+            if (!isNamedComponentUsage(path, nameSet)) return;
+
+            if (seen !== matchIndex) {
+                seen += 1;
+                return;
+            }
+
+            const children = componentUsageChildren(path);
+            if (!children) return;
+            const currentIndex = children.findIndex(child => child === path.node);
+            if (currentIndex === -1) return;
+
+            const clone = t.cloneNode(path.node, true);
+            stripUsageOidAttributes(clone);
+            children.splice(currentIndex + 1, 0, clone);
+            changed = true;
+            path.stop();
+        },
+    });
+
+    return changed;
+}
+
+export function removeComponentUsageAtIndex(
+    ast: T.File,
+    componentNames: string[],
+    matchIndex: number,
+): boolean {
+    let seen = 0;
+    let changed = false;
+    const nameSet = new Set(componentNames);
+
+    traverse(ast, {
+        JSXElement(path) {
+            if (changed) return;
+            if (!isNamedComponentUsage(path, nameSet)) return;
+
+            if (seen !== matchIndex) {
+                seen += 1;
+                return;
+            }
+
+            const children = componentUsageChildren(path);
+            if (!children) return;
+            const currentIndex = children.findIndex(child => child === path.node);
+            if (currentIndex === -1) return;
+            children.splice(currentIndex, 1);
+            changed = true;
+            path.stop();
+        },
+    });
+
+    return changed;
+}
+
+export function removeComponentUsageByText(
+    ast: T.File,
+    componentNames: string[],
+    text: string,
+): boolean {
+    let changed = false;
+    const nameSet = new Set(componentNames);
+
+    traverse(ast, {
+        JSXElement(path) {
+            if (changed) return;
+            if (!isNamedComponentUsage(path, nameSet)) return;
+            if (!hasMatchingText(path, text)) return;
+
+            const children = componentUsageChildren(path);
+            if (!children) return;
+            const currentIndex = children.findIndex(child => child === path.node);
+            if (currentIndex === -1) return;
+            children.splice(currentIndex, 1);
             changed = true;
             path.stop();
         },

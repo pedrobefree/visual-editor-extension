@@ -1,15 +1,18 @@
 export { DATA_OID_ATTR } from './constants';
 export { addOidsToAst, getAllExistingOids, deterministicOid } from './ids';
 export { getAstFromContent, getContentFromAst, findNodeByOid, findNodeByPosition } from './parse';
-export { updateNodeTextContent, setNodeTextToIdentifier } from './code-edit/text';
+export { updateNodeTextContent, setNodeTextToIdentifier, enableTextPropOverride } from './code-edit/text';
 export { addClassToNode, replaceNodeClasses, enableSlotClassOverride } from './code-edit/style';
 export {
     createJsxElement,
+    duplicateElementAtPath,
+    extractElementToComponentAtPath,
     findNodePathByPosition,
     insertElementAtPath,
     moveElementByOffset,
     moveElementAtPath,
     moveElementRelativeToSibling,
+    moveElementToParentPath,
     removeElementAtPath,
     type InsertElementSpec,
     type InsertPlacement,
@@ -22,6 +25,10 @@ export {
     updatePropValueAtIndex,
     updateComponentUsageClassNameAtIndex,
     updateComponentUsageStringPropAtIndex,
+    updateComponentUsageChildrenAtIndex,
+    duplicateComponentUsageAtIndex,
+    removeComponentUsageAtIndex,
+    removeComponentUsageByText,
     getAttrIdentifier,
     updateNodeAttrValue,
 } from './code-edit/prop-edit';

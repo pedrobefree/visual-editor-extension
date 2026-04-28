@@ -102,6 +102,47 @@ function inferPropNames(content: string, componentName: string): string[] {
 }
 
 function mockValueForProp(name: string): string {
+    if (name === 'product') {
+        return `{
+    id: "visual-edit-preview-product",
+    name: "Preview Product",
+    description: "Temporary mock data for the Visual Edit preview.",
+    image: "",
+    category: { name: "Preview" },
+    prices: [
+      { active: true, currency: "usd", unit_amount: 2900, interval: "month" },
+    ],
+  }`;
+    }
+    if (name === 'user') {
+        return `{
+    id: "visual-edit-preview-user",
+    name: "Preview User",
+    email: "preview@example.com",
+    avatarUrl: "",
+  }`;
+    }
+    if (name === 'organization') {
+        return `{
+    id: "visual-edit-preview-org",
+    name: "Preview Organization",
+  }`;
+    }
+    if (name === 'project') {
+        return `{
+    id: "visual-edit-preview-project",
+    name: "Preview Project",
+    description: "Preview project",
+  }`;
+    }
+    if (name === 'order') {
+        return `{
+    id: "visual-edit-preview-order",
+    status: "pending",
+    total: 0,
+    items: [],
+  }`;
+    }
     if (name === 'data') {
         return `[
     { month: "Jan", value: 42, target: 58 },
@@ -267,6 +308,7 @@ export function writeComponentPreview(projectRoot: string, req: ComponentPreview
     // so the preview route must use a highly specific but routable slug.
     const slug = slugForComponent(projectRoot, req);
     const pagePath = join(projectRoot, 'app', PREVIEW_ROUTE_ROOT, slug, 'page.tsx');
+    const clientPath = join(projectRoot, 'app', PREVIEW_ROUTE_ROOT, slug, 'PreviewClient.tsx');
     const importPath = toImportPath(pagePath, req.filePath);
     let componentContent = '';
     try {
@@ -293,7 +335,17 @@ export function writeComponentPreview(projectRoot: string, req: ComponentPreview
         ? `import PreviewComponent from "${importPath}";`
         : `import { ${req.name} as PreviewComponent } from "${importPath}";`;
 
-    const source = `"use client";
+    const clientImportPath = toImportPath(pagePath, clientPath);
+    const pageSource = `export const dynamic = "force-dynamic";
+
+import PreviewClient from "${clientImportPath}";
+
+export default function VisualEditComponentPreviewPage() {
+  return <PreviewClient />;
+}
+`;
+
+    const clientSource = `"use client";
 
 import React from "react";
 ${componentImport}
@@ -303,7 +355,7 @@ ${previewProps}
 ${providers.helpers}
 
 class VisualEditPreviewErrorBoundary extends React.Component<{ children: React.ReactNode }, { error: Error | null }> {
-  state = { error: null };
+  state: { error: Error | null } = { error: null };
 
   static getDerivedStateFromError(error: Error) {
     return { error };
@@ -341,7 +393,8 @@ export default function VisualEditComponentPreviewPage() {
 
     try {
         mkdirSync(dirname(pagePath), { recursive: true });
-        writeFileSync(pagePath, source, 'utf-8');
+        writeFileSync(pagePath, pageSource, 'utf-8');
+        writeFileSync(clientPath, clientSource, 'utf-8');
     } catch (error) {
         return { ok: false, error: error instanceof Error ? error.message : 'Could not write preview page' };
     }

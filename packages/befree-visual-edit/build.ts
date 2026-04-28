@@ -36,4 +36,12 @@ await Bun.build({
     external: ['@babel/types'],
 });
 
+// Next.js webpack loader — keeps SWC enabled by avoiding a custom Babel config
+await Bun.build({
+    entrypoints: ['./src/next-loader.ts'],
+    outdir: OUT,
+    target: 'node',
+    naming: '[name].js',
+});
+
 console.log('[build] ✅ befree-visual-edit built to ./dist');

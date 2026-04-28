@@ -21,8 +21,8 @@ function write(root: string, relPath: string, content: string): string {
     return filePath;
 }
 
-function generatedSource(root: string, routePath: string): string {
-    return readFileSync(join(root, 'app', routePath.replace(/^\//, ''), 'page.tsx'), 'utf-8');
+function generatedSource(root: string, routePath: string, fileName = 'page.tsx'): string {
+    return readFileSync(join(root, 'app', routePath.replace(/^\//, ''), fileName), 'utf-8');
 }
 
 describe('writeComponentPreview', () => {
@@ -42,15 +42,18 @@ export const AreaChart = ({
 
         const result = writeComponentPreview(root, { filePath, name: 'AreaChart' });
         expect(result.ok).toBe(true);
-        const source = generatedSource(root, result.path!);
+        const pageSource = generatedSource(root, result.path!);
+        const clientSource = generatedSource(root, result.path!, 'PreviewClient.tsx');
 
-        expect(source).toContain('"use client";');
-        expect(source).toContain('import { AreaChart as PreviewComponent }');
-        expect(source).toContain('data: [');
-        expect(source).toContain('categories: ["value", "target"]');
-        expect(source).toContain('colors: undefined');
-        expect(source).toContain('valueFormatter: undefined');
-        expect(source).not.toContain('chartColors.success]');
+        expect(pageSource).toContain('export const dynamic = "force-dynamic";');
+        expect(pageSource).toContain('import PreviewClient from "./PreviewClient";');
+        expect(clientSource).toContain('"use client";');
+        expect(clientSource).toContain('import { AreaChart as PreviewComponent }');
+        expect(clientSource).toContain('data: [');
+        expect(clientSource).toContain('categories: ["value", "target"]');
+        expect(clientSource).toContain('colors: undefined');
+        expect(clientSource).toContain('valueFormatter: undefined');
+        expect(clientSource).not.toContain('chartColors.success]');
     }));
 
     test('uses a default import for named default exports', () => withProject(root => {
@@ -62,7 +65,7 @@ export default function DefaultCard({ title = "Preview" }: { title?: string }) {
 
         const result = writeComponentPreview(root, { filePath, name: 'DefaultCard' });
         expect(result.ok).toBe(true);
-        const source = generatedSource(root, result.path!);
+        const source = generatedSource(root, result.path!, 'PreviewClient.tsx');
 
         expect(source).toContain('import PreviewComponent from');
         expect(source).not.toContain('import { DefaultCard as PreviewComponent }');
@@ -83,12 +86,30 @@ export function CartSheet() {
 
         const result = writeComponentPreview(root, { filePath, name: 'CartSheet' });
         expect(result.ok).toBe(true);
-        const source = generatedSource(root, result.path!);
+        const source = generatedSource(root, result.path!, 'PreviewClient.tsx');
 
         expect(source).toContain('import { CartProvider, useCart } from "@/app/context/CartContext";');
         expect(source).toContain('<CartProvider>');
         expect(source).toContain('setIsCartOpen(true)');
         expect(source).toContain('<VisualEditPreviewErrorBoundary>');
+        expect(source).toContain('state: { error: Error | null } = { error: null };');
+    }));
+
+    test('creates safe mock data for common singular props like product', () => withProject(root => {
+        const filePath = write(root, 'app/(marketing)/products/ProductCard.tsx', `
+export function ProductCard({ product }: { product: any }) {
+  const price = product.prices?.[0];
+  return <div>{product.name} {price?.currency}</div>;
+}
+`);
+
+        const result = writeComponentPreview(root, { filePath, name: 'ProductCard' });
+        expect(result.ok).toBe(true);
+        const source = generatedSource(root, result.path!, 'PreviewClient.tsx');
+
+        expect(source).toContain('product: {');
+        expect(source).toContain('prices: [');
+        expect(source).toContain('currency: "usd"');
     }));
 
     test('rejects missing exports and non-visual context/provider targets', () => withProject(root => {
