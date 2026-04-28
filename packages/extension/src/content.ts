@@ -682,8 +682,8 @@ async function handleDuplicateElement(oid: string): Promise<EditResponse> {
     return result;
 }
 
-async function handleCreateComponent(oid: string, name: string): Promise<EditResponse> {
-    const result = await bridgeStructureEdit(oid, 'componentize', { name });
+async function handleCreateComponent(oid: string, name: string, destinationDir?: string): Promise<EditResponse> {
+    const result = await bridgeStructureEdit(oid, 'componentize', { name, ...(destinationDir ? { destinationDir } : {}) });
     if (result.ok) {
         deselect();
         refreshPanelsSoon();
@@ -1028,7 +1028,7 @@ function selectElement(el: HTMLElement, oid: string): void {
             },
             onRemoveElement: async (o) => handleRemoveElement(o),
             onDuplicateElement: async (o) => handleDuplicateElement(o),
-            onCreateComponent: async (o, name) => handleCreateComponent(o, name),
+            onCreateComponent: async (o, name, destinationDir) => handleCreateComponent(o, name, destinationDir),
             onStartCopyStyle: (o) => startCopyStyleMode(o),
             onOpenAssets: () => openAssetsPanel(),
             onClose: deselect,

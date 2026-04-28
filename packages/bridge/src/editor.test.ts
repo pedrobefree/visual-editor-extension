@@ -329,4 +329,93 @@ export default function Page() {
         expect(readFileSync(cardFile, 'utf-8')).toBe(beforeCard);
         expect(readFileSync(pageFile, 'utf-8')).toBe(beforePage);
     }));
+
+    test('componentize: extracts element to default destination', () => withProject(root => {
+        const srcDir = join(root, 'src');
+        mkdirSync(srcDir, { recursive: true });
+        const pageFile = write(root, 'src/pages/Home.tsx', `export function Home() {
+  return (
+    <section data-oid="sec-1" className="hero">
+      <button data-oid="btn-1" className="cta">Click</button>
+    </section>
+  );
+}
+`);
+        const loc = findOpeningLoc(pageFile, 'section');
+        const result = applyEdit(loc, { oid: 'sec-1', kind: 'componentize', payload: { name: 'HeroBlock' } }, root);
+
+        expect(result.ok).toBe(true);
+        expect(result.componentName).toBe('HeroBlock');
+        expect(result.newFilePath).toContain('components/visual-edit/HeroBlock.tsx');
+
+        const newContent = readFileSync(result.newFilePath!, 'utf-8');
+        expect(newContent).toContain('export function HeroBlock');
+        expect(newContent).not.toContain('data-oid');
+
+        const updatedPage = readFileSync(pageFile, 'utf-8');
+        expect(updatedPage).toContain('<HeroBlock');
+        expect(updatedPage).toContain('components/visual-edit/HeroBlock');
+    }));
+
+    test('componentize: extracts element to custom subdir with correct import path', () => withProject(root => {
+        const srcDir = join(root, 'src');
+        mkdirSync(srcDir, { recursive: true });
+        const pageFile = write(root, 'src/pages/Home.tsx', `export function Home() {
+  return (
+    <div data-oid="card-1" className="card">
+      <p data-oid="txt-1">Hello</p>
+    </div>
+  );
+}
+`);
+        const loc = findOpeningLoc(pageFile, 'div');
+        const result = applyEdit(
+            loc,
+            { oid: 'card-1', kind: 'componentize', payload: { name: 'Card', destinationDir: 'src/components/sections' } },
+            root,
+        );
+
+        expect(result.ok).toBe(true);
+        expect(result.newFilePath).toContain('src/components/sections/Card.tsx');
+
+        const updatedPage = readFileSync(pageFile, 'utf-8');
+        expect(updatedPage).toContain('../components/sections/Card');
+    }));
+
+    test('componentize: blocks destination outside project root', () => withProject(root => {
+        const pageFile = write(root, 'src/Page.tsx', `export function Page() {
+  return <div data-oid="d-1" className="x">Hello</div>;
+}
+`);
+        const loc = findOpeningLoc(pageFile, 'div');
+        const result = applyEdit(
+            loc,
+            { oid: 'd-1', kind: 'componentize', payload: { name: 'Evil', destinationDir: '../../outside' } },
+            root,
+        );
+
+        expect(result.ok).toBe(false);
+        expect(result.error).toContain('outside project root');
+    }));
+
+    test('componentize: avoids name collision with numeric suffix', () => withProject(root => {
+        const srcDir = join(root, 'src');
+        mkdirSync(srcDir, { recursive: true });
+        const pageFile = write(root, 'src/Page.tsx', `export function Page() {
+  return (
+    <section data-oid="s-1" className="a">
+      <section data-oid="s-2" className="b">Inner</section>
+    </section>
+  );
+}
+`);
+        // Create a file that already occupies the default name
+        write(root, 'src/components/visual-edit/MyBlock.tsx', 'export function MyBlock() { return null; }');
+
+        const loc = findOpeningLoc(pageFile, 'section');
+        const result = applyEdit(loc, { oid: 's-1', kind: 'componentize', payload: { name: 'MyBlock' } }, root);
+
+        expect(result.ok).toBe(true);
+        expect(result.newFilePath).toContain('MyBlock2.tsx');
+    }));
 });

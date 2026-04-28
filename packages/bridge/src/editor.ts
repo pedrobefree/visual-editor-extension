@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { dirname, join, relative, sep } from 'path';
+import { basename, dirname, extname, join, relative, sep } from 'path';
 import {
     getAstFromContent,
     getContentFromAst,
@@ -107,6 +107,10 @@ export interface EditResult {
     ok: boolean;
     error?: string;
     filePath?: string;
+    /** Absolute path of a newly created component file (componentize only). */
+    newFilePath?: string;
+    /** PascalCase name of the extracted component (componentize only). */
+    componentName?: string;
 }
 
 function updatePropInUsageFile(
@@ -231,9 +235,23 @@ function toPascalCase(input: string): string {
     return /^[A-Z]/.test(name) ? name : `Visual${name || 'Component'}`;
 }
 
-function componentFilePath(projectRoot: string, componentName: string): string {
+function defaultComponentDir(projectRoot: string): string {
     const root = existsSync(join(projectRoot, 'src')) ? join(projectRoot, 'src') : projectRoot;
-    const dir = join(root, 'components', 'visual-edit');
+    return join(root, 'components', 'visual-edit');
+}
+
+function resolveDestinationDir(projectRoot: string, destinationDir?: string): { dir: string; error?: string } {
+    if (!destinationDir) return { dir: defaultComponentDir(projectRoot) };
+
+    // Prevent path traversal: destination must stay inside projectRoot
+    const resolved = join(projectRoot, destinationDir);
+    if (!resolved.startsWith(projectRoot + '/') && resolved !== projectRoot) {
+        return { dir: '', error: `Destination outside project root: ${destinationDir}` };
+    }
+    return { dir: resolved };
+}
+
+function componentFilePath(dir: string, componentName: string): string {
     let filePath = join(dir, `${componentName}.tsx`);
     let index = 2;
     while (existsSync(filePath)) {
@@ -848,7 +866,11 @@ export function applyEdit(loc: OidLocation, req: EditRequest, projectRoot = ''):
         if (!projectRoot) return { ok: false, error: 'Project root required' };
 
         const componentName = toPascalCase(payload.name);
-        const newFilePath = componentFilePath(projectRoot, componentName);
+        const destDir = (payload as { name: string; destinationDir?: string }).destinationDir;
+        const { dir, error: dirError } = resolveDestinationDir(projectRoot, destDir);
+        if (dirError) return { ok: false, error: dirError };
+
+        const newFilePath = componentFilePath(dir, componentName);
         const dependencyImports = importsForExtractedComponent(ast, collectUsedIdentifiers(nodePath.node), filePath, newFilePath);
         const componentSource = extractElementToComponentAtPath(nodePath, componentName);
         if (!componentSource) return { ok: false, error: 'Invalid component name' };
@@ -861,6 +883,14 @@ export function applyEdit(loc: OidLocation, req: EditRequest, projectRoot = ''):
         } catch {
             return { ok: false, error: `Cannot write component file: ${newFilePath}` };
         }
+
+        const generatedContent = getContentFromAst(ast, content);
+        try {
+            writeFileSync(filePath, normalizeComponentizeOutput(generatedContent), 'utf-8');
+        } catch {
+            return { ok: false, error: `Cannot write file: ${filePath}` };
+        }
+        return { ok: true, filePath, newFilePath, componentName };
     } else if (req.kind === 'move') {
         const payload = req.payload;
         if (!payload || typeof payload !== 'object' || !('index' in payload) || typeof payload.index !== 'number') {
@@ -887,15 +917,79 @@ export function applyEdit(loc: OidLocation, req: EditRequest, projectRoot = ''):
     }
 
     const generatedContent = getContentFromAst(ast, content);
-    const newContent = req.kind === 'componentize'
-        ? normalizeComponentizeOutput(generatedContent)
-        : generatedContent;
 
     try {
-        writeFileSync(filePath, newContent, 'utf-8');
+        writeFileSync(filePath, generatedContent, 'utf-8');
     } catch (e) {
         return { ok: false, error: `Cannot write file: ${filePath}` };
     }
 
     return { ok: true, filePath };
+}
+
+// ── Component duplication ────────────────────────────────────────────────────
+
+export interface DuplicateComponentResult {
+    ok: boolean;
+    error?: string;
+    newFilePath?: string;
+    componentName?: string;
+    relPath?: string;
+}
+
+/**
+ * Copies an existing component file under a new name and destination,
+ * rewriting relative imports so they remain valid.
+ * The exported symbol names are renamed from the source component name
+ * to the new component name.
+ */
+export function duplicateComponent(
+    projectRoot: string,
+    sourceFilePath: string,
+    newName: string,
+    destinationDir?: string,
+): DuplicateComponentResult {
+    if (!sourceFilePath.startsWith(projectRoot)) return { ok: false, error: 'Source path outside project root' };
+    if (!existsSync(sourceFilePath)) return { ok: false, error: 'Source component not found' };
+
+    const { dir, error: dirError } = resolveDestinationDir(projectRoot, destinationDir);
+    if (dirError) return { ok: false, error: dirError };
+
+    const componentName = toPascalCase(newName);
+    const newFilePath = componentFilePath(dir, componentName);
+
+    const content = readFileSync(sourceFilePath, 'utf-8');
+
+    // Rewrite relative imports for the new file location
+    const ast = getAstFromContent(content);
+    if (!ast) return { ok: false, error: 'Could not parse source component' };
+
+    for (const statement of ast.program.body) {
+        if (!t.isImportDeclaration(statement)) continue;
+        const src = String(statement.source.value);
+        if (!src.startsWith('.')) continue;
+        statement.source = t.stringLiteral(rewriteImportSource(src, sourceFilePath, newFilePath));
+    }
+
+    const rewrittenContent = getContentFromAst(ast, content);
+
+    // Rename the primary export symbol (and its Props interface) via word-boundary replace
+    const sourceBase = basename(sourceFilePath, extname(sourceFilePath));
+    const renamedContent = rewrittenContent
+        .replace(new RegExp(`\\b${sourceBase}Props\\b`, 'g'), `${componentName}Props`)
+        .replace(new RegExp(`\\b${sourceBase}\\b`, 'g'), componentName);
+
+    try {
+        mkdirSync(dirname(newFilePath), { recursive: true });
+        writeFileSync(newFilePath, renamedContent, 'utf-8');
+    } catch {
+        return { ok: false, error: `Cannot write component file: ${newFilePath}` };
+    }
+
+    return {
+        ok: true,
+        newFilePath,
+        componentName,
+        relPath: newFilePath.replace(projectRoot + '/', ''),
+    };
 }

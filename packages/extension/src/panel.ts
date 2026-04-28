@@ -47,7 +47,7 @@ export interface PanelCallbacks {
     onInsertComponent: (oid: string, componentName: string) => Promise<EditResponse>;
     onRemoveElement: (oid: string) => Promise<EditResponse>;
     onDuplicateElement: (oid: string) => Promise<EditResponse>;
-    onCreateComponent: (oid: string, name: string) => Promise<EditResponse>;
+    onCreateComponent: (oid: string, name: string, destinationDir?: string) => Promise<EditResponse>;
     onStartCopyStyle: (oid: string) => void;
     onOpenAssets: (oid: string) => void;
     onClose: () => void;
@@ -1852,38 +1852,74 @@ export class VisualEditPanel {
         }
     }
 
-    private requestComponentName(): Promise<string | null> {
+    private requestComponentOptions(): Promise<{ name: string; destinationDir?: string } | null> {
         return new Promise(resolve => {
             this.shadow.querySelector('.ve-modal-backdrop')?.remove();
             const backdrop = document.createElement('div');
             backdrop.className = 've-modal-backdrop';
             backdrop.innerHTML = `
-              <div class="ve-modal" role="dialog" aria-modal="true">
+              <div class="ve-modal" role="dialog" aria-modal="true" style="width:min(340px,calc(100vw - 40px))">
                 <div class="ve-modal-title">${t('panelCreateComponentPrompt')}</div>
                 <input class="text-input" id="component-name-input" type="text" value="NewComponent" spellcheck="false" />
+                <div class="ve-modal-title" style="margin-top:12px;font-size:11px;color:#888">${t('panelCreateComponentDest')}</div>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:6px;cursor:pointer">
+                  <input type="radio" name="comp-dest" value="default" checked /> ${t('panelCreateComponentDestDefault')}
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:4px;cursor:pointer">
+                  <input type="radio" name="comp-dest" value="components" /> ${t('panelCreateComponentDestComponents')}
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:4px;cursor:pointer">
+                  <input type="radio" name="comp-dest" value="custom" /> ${t('panelCreateComponentDestCustom')}
+                </label>
+                <input class="text-input" id="component-dest-custom" type="text" placeholder="${t('panelCreateComponentDestPlaceholder')}" style="display:none;margin-top:6px" spellcheck="false" />
                 <div class="ve-modal-actions">
                   <button class="btn btn-secondary" id="component-name-cancel">${t('assetsCancel')}</button>
                   <button class="btn btn-primary" id="component-name-confirm">${t('assetsSave')}</button>
                 </div>
               </div>
             `;
-            const close = (value: string | null) => {
+
+            const close = (value: { name: string; destinationDir?: string } | null) => {
                 backdrop.remove();
                 resolve(value);
             };
+
             backdrop.addEventListener('click', event => {
                 if (event.target === backdrop) close(null);
             });
             this.shadow.appendChild(backdrop);
-            const input = backdrop.querySelector('#component-name-input') as HTMLInputElement | null;
-            const confirm = backdrop.querySelector('#component-name-confirm') as HTMLButtonElement | null;
-            const cancel = backdrop.querySelector('#component-name-cancel') as HTMLButtonElement | null;
-            input?.focus();
-            input?.select();
-            confirm?.addEventListener('click', () => close(input?.value.trim() || null));
-            cancel?.addEventListener('click', () => close(null));
-            input?.addEventListener('keydown', event => {
-                if (event.key === 'Enter') close(input.value.trim() || null);
+
+            const nameInput = backdrop.querySelector('#component-name-input') as HTMLInputElement;
+            const customInput = backdrop.querySelector('#component-dest-custom') as HTMLInputElement;
+            const radios = backdrop.querySelectorAll<HTMLInputElement>('input[name="comp-dest"]');
+            const confirm = backdrop.querySelector('#component-name-confirm') as HTMLButtonElement;
+            const cancel = backdrop.querySelector('#component-name-cancel') as HTMLButtonElement;
+
+            radios.forEach(radio => {
+                radio.addEventListener('change', () => {
+                    customInput.style.display = radio.value === 'custom' ? 'block' : 'none';
+                });
+            });
+
+            const getDestinationDir = (): string | undefined => {
+                const selected = backdrop.querySelector<HTMLInputElement>('input[name="comp-dest"]:checked')?.value;
+                if (selected === 'components') return 'src/components';
+                if (selected === 'custom') return customInput.value.trim() || undefined;
+                return undefined; // default → bridge uses visual-edit/
+            };
+
+            const submit = () => {
+                const name = nameInput.value.trim();
+                if (!name) return;
+                close({ name, destinationDir: getDestinationDir() });
+            };
+
+            nameInput.focus();
+            nameInput.select();
+            confirm.addEventListener('click', submit);
+            cancel.addEventListener('click', () => close(null));
+            nameInput.addEventListener('keydown', event => {
+                if (event.key === 'Enter') submit();
                 if (event.key === 'Escape') close(null);
             });
         });
@@ -2546,9 +2582,9 @@ export class VisualEditPanel {
         bindStructureAction('#insert-component-btn', () => this.callbacks.onInsertComponent(this.oid, ''), t('componentsInsertTitle'));
         bindStructureAction('#duplicate-element-btn', () => this.callbacks.onDuplicateElement(this.oid), t('panelDuplicateSuccess'));
         bindStructureAction('#create-component-btn', async () => {
-            const name = await this.requestComponentName();
-            if (!name) return { ok: false, error: t('panelCreateComponentCancelled') };
-            return this.callbacks.onCreateComponent(this.oid, name);
+            const options = await this.requestComponentOptions();
+            if (!options) return { ok: false, error: t('panelCreateComponentCancelled') };
+            return this.callbacks.onCreateComponent(this.oid, options.name, options.destinationDir);
         }, t('panelCreateComponentSuccess'));
         bindStructureAction('#remove-element-btn', () => this.callbacks.onRemoveElement(this.oid), t('panelRemoveSuccess'));
 

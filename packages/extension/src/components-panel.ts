@@ -17,6 +17,7 @@ interface ComponentInfo {
     relPath: string;
     filePath: string;
     exports: string[];
+    origin?: 'visual-edit' | 'project';
 }
 
 interface ComponentPresence {
@@ -98,11 +99,27 @@ const CSS = `
 .action-btn:disabled { opacity: .35; cursor: not-allowed; background: #1e1e1e; border-color: #2a2a2a; color: #666; }
 .action-btn.delete-btn { background: #1e1e1e; border-color: #2a2a2a; color: #777; font-size: 11px; padding: 3px 6px; line-height: 1; }
 .action-btn.delete-btn:hover { background: #7f1d1d; border-color: #dc2626; color: #fff; }
+.action-btn.dup-btn { background: #1e1e1e; border-color: #2a2a2a; color: #777; font-size: 11px; padding: 3px 6px; line-height: 1; }
+.action-btn.dup-btn:hover { background: #1e293b; border-color: #6366f1; color: #a5b4fc; }
 .confirm-row { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .confirm-label { font-size: 9px; color: #f87171; white-space: nowrap; }
 .action-btn.danger { background: #7f1d1d; border-color: #dc2626; color: #fca5a5; }
 .action-btn.danger:hover { background: #dc2626; border-color: #dc2626; color: white; }
+.dup-form { display: flex; align-items: center; gap: 4px; width: 100%; padding: 4px 0; }
+.dup-input { flex: 1; min-width: 0; background: #0d0d0d; border: 1px solid #3730a3; border-radius: 4px; color: #c7d2fe; font-size: 10px; padding: 3px 6px; outline: none; }
+.dup-input:focus { border-color: #6366f1; }
+.action-btn.dup-confirm { background: #1e1b4b; border-color: #4338ca; color: #c7d2fe; }
+.action-btn.dup-confirm:hover { background: #4338ca; border-color: #4338ca; color: white; }
 .badge-on-page { background: #1e3a1e; color: #4ade80; border-color: #15803d; font-size: 9px; padding: 2px 5px; border-radius: 3px; border: 1px solid; margin-top: 4px; display: inline-flex; }
+.badge-visual-edit { background: #1e1b4b; color: #a5b4fc; border-color: #3730a3; font-size: 9px; padding: 2px 5px; border-radius: 3px; border: 1px solid; margin-top: 4px; display: inline-flex; }
+#preset-form { padding: 10px 12px; border-bottom: 1px solid #252525; background: #0d0d0d; display: flex; flex-direction: column; gap: 6px; }
+#preset-form .preset-row { display: flex; gap: 6px; align-items: center; }
+#preset-form select, #preset-form input { flex: 1; background: #1a1a1a; border: 1px solid #333; border-radius: 6px; color: #e5e5e5; font-size: 11px; padding: 4px 8px; outline: none; }
+#preset-form select:focus, #preset-form input:focus { border-color: #6366f1; }
+#preset-form .preset-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.icon-btn.create-btn { font-size: 15px; color: #a5b4fc; border-color: #3730a3; }
+.icon-btn.create-btn:hover { color: white; border-color: #6366f1; background: #1e1b4b; }
+.icon-btn.create-btn.active { color: white; border-color: #6366f1; background: #1e1b4b; }
 .section-label { padding: 8px 12px 4px; color: #555; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; border-bottom: 1px solid #1a1a1a; }
 #empty { padding: 28px; text-align: center; color: #444; font-size: 11px; line-height: 1.6; }
 .state-msg { padding: 28px; text-align: center; font-size: 11px; line-height: 1.6; }
@@ -138,6 +155,9 @@ export class ComponentsPanel {
     private unsubscribeLanguage: (() => void) | null = null;
     private mode: 'browse' | 'insert';
     private deleteFilePath: string | null = null;
+    private duplicateFilePath: string | null = null;
+    private showPresetForm = false;
+    private presets: Array<{ kind: string; label: string; description: string }> = [];
 
     constructor(callbacks: ComponentsPanelCallbacks) {
         this.callbacks = callbacks;
@@ -245,11 +265,18 @@ export class ComponentsPanel {
             const presence = this.presenceByFile.get(c.filePath);
             const count = presence?.count ?? 0;
             const isConfirming = this.deleteFilePath === c.filePath;
+            const isDuplicating = this.duplicateFilePath === c.filePath;
             const actionsHtml = isConfirming
                 ? `<div class="confirm-row">
                      <span class="confirm-label">${t('componentsDelete')}?</span>
                      <button class="action-btn danger" data-delete-confirm="${c.filePath}" title="${t('componentsDeleteConfirm')}">${t('componentsDeleteConfirm')}</button>
                      <button class="action-btn" data-delete-cancel title="${t('componentsDeleteCancel')}">✕</button>
+                   </div>`
+                : isDuplicating
+                ? `<div class="dup-form">
+                     <input class="dup-input" id="dup-name-input" type="text" value="${c.name}Copy" spellcheck="false" data-source-file="${c.filePath}" />
+                     <button class="action-btn dup-confirm" data-dup-confirm="${c.filePath}" title="${t('componentsDupConfirm')}">${t('componentsDupConfirm')}</button>
+                     <button class="action-btn" data-dup-cancel title="${t('componentsDeleteCancel')}">✕</button>
                    </div>`
                 : `${this.mode === 'insert'
                     ? `<button class="action-btn insert-btn" data-file="${c.filePath}" data-name="${c.name}" title="${t('componentsInsertTitle')}">${t('componentsInsert')}</button>`
@@ -257,6 +284,7 @@ export class ComponentsPanel {
                     ? `<button class="action-btn edit-btn" data-file="${c.filePath}" data-name="${c.name}" title="${t('componentsEditTitle')}">${t('componentsEdit')}</button>`
                     : `<button class="action-btn preview-btn" data-file="${c.filePath}" data-name="${c.name}" title="${t('componentsPreviewTitle')}">${t('componentsBrowser')}</button>`}
                   <button class="action-btn open-btn" data-file="${c.filePath}" title="${t('componentsOpenEditorTitle')}">↗</button>
+                  ${this.mode !== 'insert' ? `<button class="action-btn dup-btn" data-dup-start="${c.filePath}" title="${t('componentsDupTitle')}">⎘</button>` : ''}
                   ${this.mode !== 'insert' ? `<button class="action-btn delete-btn" data-delete-start="${c.filePath}" title="${t('componentsDeleteTitle')}" aria-label="${t('componentsDeleteTitle')}">✕</button>` : ''}`;
             return `
               <div class="comp-item${count ? ' on-page' : ''}" data-name="${c.name}" data-file="${c.filePath}" data-relpath="${c.relPath}">
@@ -264,6 +292,7 @@ export class ComponentsPanel {
                   <div class="comp-name">${c.name}</div>
                   <div class="comp-path">${c.relPath}</div>
                   ${count ? `<span class="badge-on-page">${t('componentsOnPageCount', { count })}</span>` : ''}
+                  ${c.origin === 'visual-edit' && !count ? `<span class="badge-visual-edit">${t('componentsVisualEditBadge')}</span>` : ''}
                 </div>
                 <div class="comp-actions">${actionsHtml}</div>
               </div>`;
@@ -271,9 +300,12 @@ export class ComponentsPanel {
 
         const onPage = filtered.filter(c => (this.presenceByFile.get(c.filePath)?.count ?? 0) > 0);
         const offPage = filtered.filter(c => (this.presenceByFile.get(c.filePath)?.count ?? 0) === 0);
+        const offPageVisual = offPage.filter(c => c.origin === 'visual-edit');
+        const offPageProject = offPage.filter(c => c.origin !== 'visual-edit');
         const items = [
             onPage.length ? `<div class="section-label">${t('componentsActivePage')}</div>${onPage.map(itemHtml).join('')}` : '',
-            offPage.length ? `<div class="section-label">${t('componentsOther')}</div>${offPage.map(itemHtml).join('')}` : '',
+            offPageVisual.length ? `<div class="section-label">${t('componentsVisualEditSection')}</div>${offPageVisual.map(itemHtml).join('')}` : '',
+            offPageProject.length ? `<div class="section-label">${t('componentsOther')}</div>${offPageProject.map(itemHtml).join('')}` : '',
         ].join('');
 
         const wrapper = document.createElement('div');
@@ -283,9 +315,23 @@ export class ComponentsPanel {
               <span class="comp-title">${this.mode === 'insert' ? t('componentsInsertTitle') : t('componentsTitle')}</span>
               <div class="comp-header-actions">
                 <span class="comp-count">${this.components.length}</span>
+                ${this.mode !== 'insert' ? `<button class="icon-btn create-btn${this.showPresetForm ? ' active' : ''}" id="comp-create-preset" title="${t('componentsCreatePreset')}">+</button>` : ''}
                 <button class="icon-btn" id="comp-close" title="${t('componentsClose')}">×</button>
               </div>
             </div>
+            ${this.showPresetForm ? `
+            <div id="preset-form">
+              <div class="preset-row">
+                <select id="preset-kind">
+                  ${this.presets.map(p => `<option value="${p.kind}" title="${p.description}">${p.label}</option>`).join('')}
+                </select>
+                <input id="preset-name" type="text" placeholder="${t('componentsPresetNamePlaceholder')}" spellcheck="false" />
+              </div>
+              <div class="preset-actions">
+                <button class="action-btn" id="preset-cancel">${t('componentsDeleteCancel')}</button>
+                <button class="action-btn dup-confirm" id="preset-submit">${t('componentsPresetCreate')}</button>
+              </div>
+            </div>` : ''}
             <div class="search-wrap">
               <input class="search-input" id="comp-search" placeholder="${t('componentsSearchPlaceholder')}" value="${this.searchValue.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}" autocomplete="off" spellcheck="false" />
             </div>
@@ -319,6 +365,37 @@ export class ComponentsPanel {
     private bindEvents(): void {
         this.blockEvents();
         this.shadow.querySelector('#comp-close')?.addEventListener('click', () => this.callbacks.onClose?.());
+
+        // Preset form toggle
+        this.shadow.querySelector('#comp-create-preset')?.addEventListener('click', () => {
+            this.showPresetForm = !this.showPresetForm;
+            if (this.showPresetForm && !this.presets.length) this.loadPresets();
+            this.render();
+            if (this.showPresetForm) {
+                requestAnimationFrame(() => {
+                    (this.shadow.querySelector('#preset-name') as HTMLInputElement | null)?.focus();
+                });
+            }
+        });
+
+        // Preset form cancel
+        this.shadow.querySelector('#preset-cancel')?.addEventListener('click', () => {
+            this.showPresetForm = false;
+            this.render();
+        });
+
+        // Preset form submit
+        const submitPreset = async () => {
+            const kind = (this.shadow.querySelector('#preset-kind') as HTMLSelectElement | null)?.value;
+            const name = (this.shadow.querySelector('#preset-name') as HTMLInputElement | null)?.value.trim();
+            if (!kind || !name) return;
+            await this.createPresetComponent(kind, name);
+        };
+        this.shadow.querySelector('#preset-submit')?.addEventListener('click', submitPreset);
+        (this.shadow.querySelector('#preset-name') as HTMLInputElement | null)?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') submitPreset();
+            if (e.key === 'Escape') { this.showPresetForm = false; this.render(); }
+        });
 
         // Search
         const searchInput = this.shadow.querySelector('#comp-search') as HTMLInputElement | null;
@@ -369,6 +446,54 @@ export class ComponentsPanel {
             });
         });
 
+        // Duplicate start — show inline name input
+        this.shadow.querySelectorAll<HTMLElement>('[data-dup-start]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.duplicateFilePath = btn.dataset.dupStart ?? null;
+                this.deleteFilePath = null;
+                this.render();
+                // Focus the input after render
+                requestAnimationFrame(() => {
+                    const input = this.shadow.querySelector<HTMLInputElement>('#dup-name-input');
+                    input?.focus();
+                    input?.select();
+                });
+            });
+        });
+
+        // Duplicate cancel
+        this.shadow.querySelectorAll<HTMLElement>('[data-dup-cancel]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.duplicateFilePath = null;
+                this.render();
+            });
+        });
+
+        // Duplicate confirm
+        this.shadow.querySelectorAll<HTMLElement>('[data-dup-confirm]').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const filePath = btn.dataset.dupConfirm ?? '';
+                const input = this.shadow.querySelector<HTMLInputElement>('#dup-name-input');
+                const newName = input?.value.trim() ?? '';
+                if (!newName) return;
+                await this.duplicateComponentFile(filePath, newName);
+            });
+        });
+
+        // Allow Enter key in dup-name-input to confirm
+        this.shadow.querySelector<HTMLInputElement>('#dup-name-input')?.addEventListener('keydown', async (e) => {
+            if (e.key === 'Escape') { this.duplicateFilePath = null; this.render(); return; }
+            if (e.key !== 'Enter') return;
+            const input = e.target as HTMLInputElement;
+            const newName = input.value.trim();
+            if (!newName) return;
+            const filePath = input.dataset.sourceFile ?? '';
+            await this.duplicateComponentFile(filePath, newName);
+        });
+
         // Delete start — show inline confirm
         this.shadow.querySelectorAll<HTMLElement>('[data-delete-start]').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -416,6 +541,72 @@ export class ComponentsPanel {
                 }
             });
         });
+    }
+
+    private async loadPresets(): Promise<void> {
+        try {
+            const res = await fetch(`${BRIDGE}/presets`, { signal: AbortSignal.timeout(3000) });
+            const data = await res.json() as { ok: boolean; presets?: typeof this.presets };
+            if (data.ok && data.presets) {
+                this.presets = data.presets;
+                if (this.showPresetForm) this.render();
+            }
+        } catch { /* non-critical */ }
+    }
+
+    private async createPresetComponent(kind: string, name: string): Promise<void> {
+        const submitBtn = this.shadow.querySelector<HTMLButtonElement>('#preset-submit');
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '…'; }
+        try {
+            const res = await fetch(`${BRIDGE}/preset-create`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ kind, name }),
+            });
+            const data = await res.json() as { ok: boolean; componentName?: string; newFilePath?: string; relPath?: string; error?: string };
+            if (data.ok && data.newFilePath && data.componentName) {
+                const newComp: ComponentInfo = {
+                    name: data.componentName,
+                    relPath: data.relPath ?? '',
+                    filePath: data.newFilePath,
+                    exports: [data.componentName],
+                    origin: 'visual-edit',
+                };
+                this.components = [...this.components, newComp];
+                this.showPresetForm = false;
+                this.render();
+            } else {
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = t('componentsPresetCreate'); }
+            }
+        } catch {
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = t('componentsPresetCreate'); }
+        }
+    }
+
+    private async duplicateComponentFile(sourceFilePath: string, newName: string): Promise<void> {
+        this.duplicateFilePath = null;
+        try {
+            const res = await fetch(`${BRIDGE}/component-duplicate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filePath: sourceFilePath, name: newName }),
+            });
+            const data = await res.json() as { ok: boolean; relPath?: string; componentName?: string; newFilePath?: string; error?: string };
+            if (data.ok && data.newFilePath && data.componentName) {
+                const newComp: ComponentInfo = {
+                    name: data.componentName,
+                    relPath: data.relPath ?? data.newFilePath.replace(/^.*?\/src\//, 'src/'),
+                    filePath: data.newFilePath,
+                    exports: [data.componentName],
+                };
+                this.components = [...this.components, newComp];
+                this.render();
+            } else {
+                this.render();
+            }
+        } catch {
+            this.render();
+        }
     }
 
     private async deleteComponent(filePath: string): Promise<void> {

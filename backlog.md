@@ -2,444 +2,857 @@
 
 ## Objetivo
 
-Expandir a extensao para dar ao usuario mais poder de manipulacao visual de front-end diretamente no browser, preservando a arquitetura atual do projeto e evitando dependencias desnecessarias da implementacao do Onlook.
+Expandir a extensao para dar ao usuario mais poder de manipulacao visual de front-end diretamente no browser, preservando a arquitetura atual do projeto e evitando dependencias desnecessarias.
 
-Este documento consolida:
+Este arquivo passa a funcionar como:
 
-- os recursos desejados
-- a sequencia recomendada de implementacao
-- o escopo de cada fase
-- os checklists tecnicos de entrega
+- visao geral do produto
+- status consolidado dos recursos
+- roadmap por fases
+- plano da proxima frente de desenvolvimento
 
 ## Principios
 
-- Priorizar primitivas estruturais de edicao antes de UXs mais sofisticadas.
-- Reaproveitar referencias do Onlook apenas quando fizer sentido arquiteturalmente.
-- Manter o stack atual leve: extensao + bridge local + parser AST.
-- Preferir entregas incrementais com validacao manual simples em apps React/Next.js.
-- Separar claramente o que e prioridade imediata do que permanece como backlog.
+- Priorizar primitivas estruturais antes de UXs mais sofisticadas.
+- Manter o stack leve: extensao + bridge local + parser AST.
+- Entregar em fatias incrementais com validacao manual simples em apps React/Next.js.
+- Separar claramente o que esta operacional, o que ainda precisa consolidacao e o que ainda esta em descoberta.
+- Evitar abrir novas frentes grandes antes de fechar bem a frente atual.
 
-## Sequencia de Implementacao
+## Leitura Rapida do Status
 
-A sequencia abaixo substitui a divisao anterior em blocos por uma ordem mais racional de dependencia tecnica.
+### Recursos considerados implementados para fins de roadmap
 
-### Fase 1 - Primitivas estruturais de edicao
+Os recursos abaixo passam a ser tratados como implementados nesta fase de planejamento. Pendencias de validacao podem ser revisitadas depois em rodadas dedicadas de QA.
 
-1. Inserir elementos
-2. Remover elementos
-3. Mover elementos por arvore
+1. Adicionar elementos a tela ou componente
+2. Remover elementos existentes
+3. Biblioteca de assets do projeto
+4. Mover elementos por drag and drop
+5. Duplicar elemento ou bloco
 
-Motivo:
+### Recurso em consolidacao (ciclo atual concluido)
 
-- `insert`, `remove` e `move` sao a base para quase todo o restante.
-- Drag visual, duplicacao, extracao de componente e biblioteca de blocos dependem disso.
+6. Criar novos componentes/blocos pelo browser
 
-### Fase 2 - Biblioteca de assets
+### Recursos ainda 100% pendentes
 
-4. Biblioteca de imagens com upload, rename, delete e aplicacao no elemento selecionado
-
-Motivo:
-
-- Tem valor alto para o usuario.
-- Pode ser entregue sem exigir toda a complexidade de drag livre no canvas.
-
-### Fase 3 - Operacoes visuais de composicao
-
-5. Drag and drop pela arvore de elementos
-6. Duplicar elemento ou bloco
-7. Criar novos componentes/blocos pelo browser
-
-Motivo:
-
-- Depende de `insert/remove/move`.
-- Permite evoluir de edicao de elementos para composicao de UI.
-
-### Fase 4 - Biblioteca externa e importacao assistida
-
+7. Conversor de elementos externos em componente React
 8. Importar componentes, blocos e charts de bibliotecas como Shadcn
-9. Conversor de elementos externos em componente React a partir de URL + selector/id
+9. Interface para aplicacao de animacoes
+10. Ferramentas extras tipo TWColor
 
-Motivo:
+## Roadmap Reorganizado
 
-- Aqui o produto passa a ingerir UI externa.
-- Exige pipeline de captura, normalizacao e persistencia mais robusta.
+### Fase A - Base estrutural
 
-### Fase 5 - Ferramentas de produtividade visual
+Objetivo:
 
-10. Builder de animacoes
-11. Ferramentas extras tipo glassmorphism, backdrop, gradient mesh, gradient animator e afins
+- permitir manipulacao estrutural segura do JSX pelo browser
 
-Motivo:
+Escopo:
 
-- Sao multiplicadores de produtividade e UX.
-- Ficam melhores quando a base estrutural e de assets ja estiver estavel.
+- inserir elementos
+- remover elementos
+- mover elementos
+- duplicar elementos/blocos
 
-## Status dos Recursos
+Status:
+
+- funcional para fins de roadmap
+
+Observacoes:
+
+- validacoes restantes ficam para QA posterior
+
+### Fase B - Biblioteca local de assets
+
+Objetivo:
+
+- permitir reaproveitamento e aplicacao rapida de imagens do projeto
+
+Escopo:
+
+- listagem de assets
+- upload
+- rename com atualizacao de referencias
+- delete
+- aplicacao em `img` e fluxos relacionados
+
+Status:
+
+- funcional para fins de roadmap
+
+### Fase C - Autoria de componentes pelo browser
+
+Objetivo:
+
+- evoluir de edicao estrutural para composicao real de UI reutilizavel
+
+Escopo macro:
+
+- extrair selecao para componente React
+- inserir componente existente
+- transformar o fluxo atual em um construtor simples de blocos/componentes
+
+Status:
+
+- parcialmente implementado
+
+Motivo da prioridade:
+
+- aproveita a base AST e bridge ja prontas
+- entrega valor alto sem abrir a complexidade de ingestao externa
+- destrava a futura importacao de blocos/bibliotecas
+
+### Fase D - Ingestao externa e importacao assistida
+
+Objetivo:
+
+- trazer UI externa ou de bibliotecas para dentro do projeto atual
+
+Escopo macro:
+
+- importar componentes/blocos/charts de bibliotecas como Shadcn
+- converter trechos externos por URL + selector em componente React
+
+Status:
+
+- nao iniciado
+
+Observacoes:
+
+- esta fase exige pipeline nova de captura, normalizacao e persistencia
+- deve vir depois da consolidacao da Fase C
+
+### Fase E - Ferramentas de produtividade visual
+
+Objetivo:
+
+- acelerar refinamentos visuais sem exigir edicao manual de classes
+
+Escopo macro:
+
+- presets e editor de animacoes
+- ferramentas extras tipo glassmorphism, backdrop, gradients e afins
+
+Status:
+
+- nao iniciado
+
+Observacoes:
+
+- idealmente depende de uma base estrutural e de componentes mais estavel
+
+## Status Detalhado dos Recursos
 
 ### 1. Adicionar elementos a tela ou componente
 
-Status: `Parcialmente implementado na Fase 1`
+Status: `Implementado para roadmap`
 
-Escopo inicial:
+Escopo atual coberto:
 
-- Inserir `div`
-- Inserir texto
-- Inserir `button`
-- Inserir imagem referenciada por `src`
-- Inserir container/grupo simples
-- Posicionamento por `append`, `prepend` e `index`
+- inserir `div`
+- inserir texto
+- inserir `button`
+- inserir imagem referenciada por `src`
+- inserir container/grupo simples
+- posicionamento por `append`, `prepend` e `index`
 
-Fora do escopo inicial:
+Pendencias movidas para QA:
 
-- Insercao livre complexa no canvas com snapping
-- Insercao de componentes complexos vindos de bibliotecas externas
-
-Checklist:
-
-- [x] Definir tipos de acao para `insert-element`
-- [x] Adicionar suporte no parser para criacao de JSX
-- [x] Permitir atributos, texto e filhos basicos
-- [x] Permitir insercao em pai alvo por `oid`
-- [x] Expor endpoint no bridge para insercao
-- [x] Criar UI inicial de insercao na extensao
-- [x] Atualizar overlays e layers apos insercao
-- [x] Restringir insercao para containers validos e evitar filhos invalidos em `button`, `p`, `span`, headings e afins
-- [x] Dar visibilidade melhor ao `group` inserido com estilo default visivel
-- [x] Reaproveitar classes ja usadas no projeto ao inserir `button` e `img`, quando disponiveis
-- [ ] Validar insercao em `.tsx` e `.jsx`
-- [ ] Testar em elementos simples e em componentes reutilizados
+- validar insercao em `.tsx` e `.jsx`
 
 ### 2. Remover elementos existentes
 
-Status: `Parcialmente implementado na Fase 1`
+Status: `Implementado para roadmap`
 
-Escopo inicial:
+Escopo atual coberto:
 
-- Remover elemento selecionado
-- Confirmacao basica para evitar remocoes acidentais
-- Atualizar selecao e arvore depois da remocao
-
-Checklist:
-
-- [x] Definir tipos de acao para `remove-element`
-- [x] Adicionar remocao AST por `oid`
-- [x] Garantir preservacao do JSX restante
-- [x] Expor endpoint no bridge para remocao
-- [x] Adicionar comando de delete na extensao
-- [x] Atualizar painel de layers e overlays apos remocao
-- [x] Testar remocao de filhos, containers e elementos de texto
+- remover elemento selecionado
+- confirmacao basica
+- atualizar selecao e arvore apos remocao
 
 ### 3. Biblioteca de assets do projeto
 
-Status: `Parcialmente implementado na Fase 2`
+Status: `Implementado para roadmap`
 
-Escopo inicial:
+Escopo atual coberto:
 
-- Biblioteca de imagens
-- Upload de novas imagens
-- Rename de arquivos com atualizacao de referencias
-- Delete de arquivos
-- Aplicar imagem ao elemento selecionado
-- Atualizar `src` de `<img>` e, quando fizer sentido, `background-image`
+- biblioteca de imagens
+- upload
+- rename com atualizacao de referencias
+- delete
+- aplicar imagem ao elemento selecionado
+- atualizar `src` de `<img>` e fluxos relacionados
 
-Escopo posterior:
+Evolucoes futuras possiveis:
 
-- Videos
-- Audios
-- Pastas customizadas alem de `public/` e `src/assets/`
-
-Checklist:
-
-- [x] Mapear diretorios de assets suportados
-- [x] Criar leitura/listagem de imagens no bridge
-- [x] Criar upload de arquivos no bridge
-- [x] Criar rename com atualizacao de referencias em arquivos TSX/JSX
-- [x] Criar delete de asset
-- [x] Criar painel de assets na extensao
-- [x] Permitir aplicar asset ao elemento selecionado
-- [x] Permitir inserir nova imagem a partir de um asset selecionado
-- [x] Permitir atualizar imagem existente
-- [x] Tratar erros de arquivos ausentes, nome duplicado e extensao invalida
-- [x] Integrar a biblioteca de assets diretamente ao editor de `img` no painel de propriedades, mantendo `src` manual como fallback
-- [x] Substituir dialogs nativos de rename/delete por controles inline no painel
-- [x] Permitir usar imagem por URL/path diretamente pela biblioteca de assets
-- [x] Substituir input manual de `src` por preview da imagem no painel de propriedades
-- [x] Permitir criar atributo `alt` ausente ao salvar propriedades de imagem
+- videos
+- audios
+- pastas customizadas alem de `public/` e `src/assets/`
 
 ### 4. Mover elementos por drag and drop
 
-Status: `Parcialmente implementado na Fase 1`
+Status: `Implementado para roadmap`
 
-Escopo inicial:
+Escopo atual coberto:
 
-- Reordenacao pela arvore de elementos
-- Restricao inicial a movimentos dentro do mesmo pai
-- Persistencia por indice no JSX
+- reordenacao pela arvore
+- persistencia estrutural no JSX
+- mover para outro container suportado pela arvore
 
-Escopo posterior:
+Pendencias movidas para QA/UX:
 
-- Mover entre pais compativeis
-- Drag direto no canvas
-- Regras especiais para flex/grid/absolute
-- Drag and drop completo na arvore
-
-Checklist:
-
-- [x] Definir tipos de acao para `move-element`
-- [x] Adicionar suporte AST para mover por indice
-- [x] Expor endpoint no bridge para move
-- [x] Adaptar painel de layers para drag and drop inicial
-- [ ] Atualizar preview visual durante hover de drop
-- [x] Recalcular selecao e overlays apos move
-- [x] Testar reordenacao de siblings no mesmo container
-- [x] Bloquear casos nao suportados com feedback claro
-- [x] Manter elemento selecionado em foco na arvore depois de selecionar ou mover
-- [x] Sincronizar melhor overlay e selecao da arvore apos move
-- [x] Permitir mover elemento para outro container via drag and drop na arvore
+- revisar preview visual durante hover de drop
 
 ### 5. Duplicar elemento ou bloco
 
-Status: `Parcialmente implementado na Fase 3`
+Status: `Implementado para roadmap`
 
-Escopo inicial:
+Escopo atual coberto:
 
-- Duplicar o elemento selecionado logo apos ele no mesmo pai
-- Duplicar a subarvore do elemento selecionado
-- Remover `data-oid` do clone para evitar OIDs duplicados no codigo
-- Atualizar arvore/overlays apos a operacao
+- duplicar o elemento selecionado logo apos ele
+- duplicar subarvore
+- remover `data-oid` do clone
+- atualizar arvore e overlays
 
-Checklist:
+Pendencias movidas para QA:
 
-- [x] Criar primitiva AST de duplicacao de JSXElement
-- [x] Remover OIDs do clone e dos filhos clonados
-- [x] Expor acao `duplicate` no bridge
-- [x] Adicionar botao de duplicacao no painel de estrutura
-- [x] Atualizar checklist da Fase 3
-- [x] Selecionar automaticamente a copia apos refresh/indexacao quando possivel
-- [ ] Validar duplicacao de componentes reutilizados e elementos com props dinamicas
+- validar duplicacao de componentes reutilizados e elementos com props dinamicas
 
 ### 6. Criar novos componentes/blocos pelo browser
 
-Status: `Parcialmente implementado na Fase 3`
+Status: `Parcialmente implementado`
 
-Escopo inicial:
+Ja existe:
 
-- Extrair o elemento selecionado para um novo componente React
-- Criar arquivo em `src/components/visual-edit/`
-- Substituir o JSX original por uma instancia do novo componente
-- Adicionar import no arquivo original
-- Cobrir a operacao pelo undo global
+- extrair o elemento selecionado para um novo componente React
+- criar arquivo em `src/components/visual-edit/`
+- substituir o JSX original por uma instancia do novo componente
+- adicionar import no arquivo original
+- inserir componente existente no elemento/container selecionado
+- inferir props iniciais para textos estaticos, `src`, `alt` e classes estaticas
 
-Checklist:
+Concluido neste ciclo:
 
-- [x] Criar primitiva AST para extrair elemento selecionado
-- [x] Remover `data-oid` da subarvore extraida
-- [x] Gerar arquivo de componente nomeado
-- [x] Inserir import no arquivo original
-- [x] Substituir elemento original por `<Componente />`
-- [x] Expor acao `componentize` no bridge
-- [x] Adicionar acao inicial no painel de estrutura
-- [x] Adicionar teste de extracao no parser
-- [x] Copiar imports usados pela subarvore extraida para o componente gerado
-- [x] Reduzir linhas em branco excessivas geradas ao componentizar
-- [x] Inserir componente existente no elemento/container selecionado
-- [x] Adicionar import automaticamente ao inserir componente existente
-- [x] Substituir prompt nativo por modal/input proprio da extensao
-- [ ] Trocar prompt de inserir componente por seletor/dropdown pesquisavel
-- [x] Inferir props iniciais para textos estaticos e `src`/`alt` de imagens
-- [x] Inferir props para classes estaticas e permitir edicao por instancia quando possivel
-- [ ] Permitir escolher pasta/destino do componente
-- [ ] Permitir duplicar componente existente antes de editar
+- [x] permitir escolher pasta/destino do componente
+- [x] duplicar componente existente antes de editar (endpoint /component-duplicate + UI no painel)
+- [x] fluxo de "salvar como bloco" e "criar variacao" via presets MVP
+- [x] biblioteca local diferencia componentes criados pelo browser (badge + secao separada)
+- [x] builder MVP por presets: Section, Card, Hero, Feature Grid, CTA
 
-### Ajustes de UX e Contexto aplicados na Fase 1
+### 7. Conversor de elementos externos em componente React
 
-- [x] Ocultar seletor `Aplicacao/Componente` quando o elemento nao estiver em contexto de componente
-- [x] Indicar raiz de componente na arvore de elementos
-- [x] Adicionar busca por nome nas paletas de cor
-- [x] Expandir chips de tipografia com alinhamento, estilo, `leading` e `tracking`
-- [x] Permitir editar `src` e `alt` de imagens no painel de conteudo
-- [x] Sugerir classes ja usadas no projeto por tipo de elemento
-- [x] Exibir sugestoes de classes e presets project-wide vindos do bridge
-- [x] Adicionar modo de copiar estilo de outro elemento
-- [x] Melhorar UI dos controles estruturais com botoes iconograficos e tooltip
-- [x] Diferenciar selecao da arvore por instancia de elemento, e nao apenas por `oid`
-- [x] Transformar estilos do projeto em dropdown com busca e preview por hover
-- [x] Adicionar undo global no bridge para restaurar a ultima edicao persistida no codigo-fonte
-- [ ] Revisar por que classes project-wide como `text-brand-600` ainda podem nao aparecer em alguns projetos/paginas
-- [ ] Revisitar a persistencia de `move` na arvore: ainda ha casos em que mover um elemento e tentar movê-lo de volta em seguida falha sem refresh
+Status: `Backlog de descoberta`
 
-### 5. Conversor de elementos externos em componente React
+Descricao:
+
+- o usuario informa uma URL e um `selector`, `id` ou alvo equivalente
+- o sistema extrai a estrutura desejada e converte isso em um componente React reaproveitavel
+
+Desafios:
+
+- captura de HTML e CSS efetivamente usados
+- normalizacao de estilos
+- sanitizacao de scripts e dependencias
+- conversao HTML -> JSX limpo
+- adaptacao ao stack do projeto atual
+- tratamento de assets externos
+
+### 8. Importar componentes, blocos e charts de bibliotecas como Shadcn
+
+Status: `Backlog de descoberta`
+
+Escopo inicial desejado:
+
+- importacao guiada de blocos/componentes do Shadcn
+- insercao assistida no projeto atual
+- adaptacao minima ao padrao do projeto
+
+Pontos a definir:
+
+- fonte inicial de importacao suportada
+- formato interno para blocos importados
+- preview antes da insercao
+- tratamento de imports, dependencias e conflitos de nome
+
+### 9. Interface para aplicacao de animacoes
 
 Status: `Backlog`
 
-Descricao refinada:
+Escopo inicial desejado:
 
-- O usuario informa uma URL e um `selector`, `id` ou outro alvo da pagina.
-- O sistema extrai a estrutura desejada e converte isso em um componente React ou em um elemento reaproveitavel dentro do projeto atual.
+- presets de animacao
+- controle visual de duracao, delay, easing e repeticao
+- escrita de classes/utilitarios no elemento selecionado
 
-Desafios principais:
+Pontos a definir:
 
-- Captura de HTML e CSS efetivamente usados
-- Normalizacao de estilos
-- Sanitizacao de scripts e dependencias
-- Conversao para JSX limpo
-- Adaptacao ao stack do projeto atual
+- modelo de presets
+- estrategia de escrita em classes Tailwind
+- preview no DOM antes de aplicar
+- conflitos com classes existentes
 
-Checklist inicial de descoberta:
+### 10. Ferramentas extras tipo TWColor
 
-- [ ] Definir pipeline de captura da pagina
-- [ ] Definir formato de entrada: URL + selector/id
-- [ ] Definir estrategia de extracao de estilos
-- [ ] Definir conversao HTML -> JSX
-- [ ] Definir estrategia de assets externos
-- [ ] Definir criterio de insercao no projeto atual
+Status: `Backlog`
 
-### 6. Importar componentes, blocos e charts de bibliotecas como Shadcn
+Escopo inicial desejado:
 
-Status: `Planejado para Fase 4`
-
-Escopo inicial:
-
-- Importacao guiada de blocos/componentes do Shadcn
-- Insercao assistida no projeto atual
-- Adaptacao minima ao padrao do projeto
+- glassmorphism
+- backdrop
+- gradient presets
+- gradient animator
 
 Escopo posterior:
 
-- Outras bibliotecas
-- Charts
-- Ajustes automaticos de tokens/tema
+- gradient mesh
+- text effects
+- shadow/glow builders
 
-Checklist:
+## Proxima Frente Recomendada
 
-- [ ] Definir fonte inicial de importacao suportada
-- [ ] Criar catalogo ou parser de componentes externos
-- [ ] Definir formato interno para blocos importados
-- [ ] Permitir preview antes da insercao
-- [ ] Inserir bloco no projeto via parser/bridge
-- [ ] Tratar imports, dependencias e nomes conflitantes
+### Prioridade atual
 
-### 7. Criar novos componentes pelo browser
+Consolidar o recurso 6: `Criar novos componentes/blocos pelo browser`.
 
-Status: `Planejado para Fase 3`
+Racional:
 
-Escopo inicial:
+- e a frente com melhor relacao entre valor entregue e risco tecnico
+- reutiliza parser, bridge e extensao ja existentes
+- evita abrir cedo demais a complexidade de ingestao externa
+- cria a base certa para Shadcn, blocos importados e conversor externo
 
-- Duplicar elemento/bloco existente
-- Salvar duplicacao como novo bloco reutilizavel
-- Criar componente simples a partir de selecao
+### Objetivo do proximo ciclo
 
-Escopo posterior:
+Transformar a componentizacao atual em um fluxo real de autoria de componentes/blocos.
 
-- Extracao automatica com props
-- Escolha de arquivo/localizacao
-- Registro em biblioteca local
+### Escopo sugerido para o proximo ciclo
 
-Checklist:
+1. Escolha de pasta/destino ao criar componente
+2. Duplicar componente existente antes de editar
+3. Definir acao de "salvar como bloco" ou "criar variacao"
+4. Melhorar a biblioteca local para destacar componentes criados pelo browser
+5. Criar um MVP de construtor baseado em presets locais
 
-- [ ] Implementar duplicacao estrutural
-- [ ] Definir operacao de "salvar como componente"
-- [ ] Definir template minimo para novo componente
-- [ ] Persistir arquivo do novo componente
-- [ ] Inserir uso do componente no local de origem
-- [ ] Atualizar painel de componentes
+### Fora do escopo imediato
 
-### 8. Interface para aplicacao de animacoes
+- conversao de UI externa por URL
+- importacao de bibliotecas como Shadcn
+- builder avancado de animacoes
+- ferramentas visuais extras
 
-Status: `Planejado para Fase 5`
+## Plano Sugerido por Milestone
 
-Escopo inicial:
+### Milestone 1 - Finalizar componentizacao atual
 
-- Presets de animacao
-- Controle visual de duracao, delay, easing e repeticao
-- Escrita de classes/utilitarios no elemento selecionado
+Entregas:
 
-Escopo posterior:
+- escolha de destino do arquivo
+- naming mais previsivel
+- UX mais clara para criacao de componente
 
-- Integracao com libs externas de animacao
-- Builder mais avancado
-- Preview temporal refinado
+Saida esperada:
 
-Checklist:
+- fluxo confiavel de "extrair para componente"
 
-- [ ] Definir modelo de presets
-- [ ] Definir estrategia de escrita em classes Tailwind
-- [ ] Criar painel de animacoes
-- [ ] Adicionar preview no DOM antes de aplicar
-- [ ] Persistir configuracao no codigo
-- [ ] Testar conflito com classes existentes
+### Milestone 2 - Criar variacoes reutilizaveis
 
-### 9. Ferramentas extras tipo TWColor
+Entregas:
 
-Status: `Planejado para Fase 5`
+- duplicar componente existente antes de editar
+- salvar como bloco/variacao
+- reinserir facilmente componentes criados
 
-Escopo inicial:
+Saida esperada:
 
-- Glassmorphism
-- Backdrop
-- Gradient presets
-- Gradient animator
+- fluxo confiavel de reutilizacao e derivacao de blocos
 
-Escopo posterior:
+### Milestone 3 - Builder MVP de componentes
 
-- Gradient mesh
-- Text effects
-- Shadows e glow builders
+Entregas:
 
-Checklist:
+- presets simples como `Section`, `Card`, `Hero`, `Feature Grid`, `CTA`
+- criacao pelo browser com estrutura inicial pronta
+- persistencia no projeto como componente real
 
-- [ ] Definir primeira leva de ferramentas
-- [ ] Criar geradores de classes/presets
-- [ ] Integrar ao painel atual
-- [ ] Permitir preview antes de aplicar
-- [ ] Garantir composicao com classes existentes
+Saida esperada:
 
-### 10. Objetivo principal de dar mais poder visual ao usuario
+- primeiro "construtor" de componentes sem depender de bibliotecas externas
 
-Status: `Diretriz permanente`
+## Plano Operacional do Recurso 6
 
-Indicadores de sucesso:
+### Objetivo operacional
 
-- O usuario consegue editar estrutura, conteudo e estilo sem sair do browser na maioria dos casos comuns.
-- A extensao reduz a necessidade de alterar JSX manualmente para tarefas basicas e intermediarias.
-- O fluxo visual continua refletindo o codigo real do projeto.
+Fechar a frente de `Criar novos componentes/blocos pelo browser` sem abrir ainda a complexidade de importacao externa.
 
-## Dependencias Tecnicas
+Resultado esperado:
+
+- o usuario consegue criar um componente novo a partir de uma selecao
+- o usuario consegue escolher onde esse componente sera salvo
+- o usuario consegue derivar um componente existente sem editar o original
+- o usuario consegue reinserir e reutilizar esses componentes/blocos com fluxo previsivel
+
+### Escopo do ciclo atual
+
+Dentro do escopo:
+
+- escolha de pasta/destino do componente
+- duplicar componente existente antes de editar
+- fluxo de "salvar como bloco" ou "criar variacao"
+- melhoria da biblioteca local para componentes criados pelo browser
+
+Fora do escopo:
+
+- importacao de Shadcn
+- conversor por URL + selector
+- builder visual livre no canvas
+- sistema avancado de presets visuais
+
+### Entregas por milestone
+
+#### Milestone 1 - Escolha de destino e previsibilidade do fluxo
+
+Objetivo:
+
+- consolidar o fluxo atual de extracao para componente
+
+Entregas funcionais:
+
+- permitir escolher pasta/destino ao criar componente
+- padronizar naming e evitar colisao de nomes de forma clara
+- mostrar no browser onde o componente sera criado
+- atualizar a biblioteca local imediatamente apos a criacao
+
+Critério de pronto:
+
+- extrair um elemento para componente sem depender de caminho fixo
+- criar arquivo, importar e substituir JSX de forma consistente
+- componente aparece como reutilizavel na biblioteca logo apos a operacao
+
+#### Milestone 2 - Derivacao e reutilizacao
+
+Objetivo:
+
+- permitir que o usuario trabalhe por fork/variacao de blocos existentes
+
+Entregas funcionais:
+
+- duplicar componente existente antes de editar
+- criar variacao com novo nome e novo arquivo
+- reinserir variacao no projeto pelo browser
+- diferenciar componente original de derivacoes criadas localmente
+
+Critério de pronto:
+
+- o usuario consegue partir de um componente existente, gerar uma copia segura e seguir editando a copia
+
+#### Milestone 3 - Blocos e builder MVP
+
+Objetivo:
+
+- transformar a componentizacao em uma experiencia inicial de construcao de blocos
+
+Entregas funcionais:
+
+- acao de criar bloco a partir de presets locais
+- presets minimos como `Section`, `Card`, `Hero`, `Feature Grid`, `CTA`
+- persistencia desses presets como componentes reais do projeto
+- insercao desses blocos na arvore atual
+
+Critério de pronto:
+
+- o usuario consegue criar um componente/bloco novo pelo browser sem partir obrigatoriamente de uma selecao ja existente
+
+### Subtarefas por camada
+
+#### Parser
+
+Responsabilidades:
+
+- manter a extracao AST confiavel
+- suportar novos fluxos de derivacao/variacao
+- manter imports, props inferidas e JSX gerado consistentes
+
+Subtarefas do ciclo:
+
+- parametrizar melhor a extracao para aceitar metadados do destino do componente
+- revisar a geracao de props inferidas para reduzir ruido em componentes extraidos
+- preparar operacao de derivacao de componente existente sem reaproveitar OIDs indevidos
+- garantir que a geracao de arquivo final continue limpa e previsivel
+
+Riscos:
+
+- props inferidas demais podem gerar API ruim no componente criado
+- derivacao de componente com imports relativos pode quebrar paths se o destino mudar
+
+#### Bridge
+
+Responsabilidades:
+
+- coordenar persistencia de arquivos
+- expor rotas do fluxo de criacao/derivacao
+- atualizar indexacao e resposta para a extensao
+
+Subtarefas do ciclo:
+
+- aceitar `destinationPath` ou equivalente no fluxo de `componentize`
+- validar se o destino escolhido e permitido e existe no projeto
+- criar operacao de duplicar componente existente para novo arquivo
+- devolver metadados suficientes para a extensao atualizar a biblioteca local sem refresh manual
+- tratar conflitos de nome, import path e arquivos ja existentes com feedback claro
+
+Riscos:
+
+- destinos livres demais podem criar componentes em locais incoerentes
+- derivacao de componentes compartilhados pode exigir reescrita cuidadosa de imports relativos
+
+#### Extension
+
+Responsabilidades:
+
+- oferecer o fluxo de UX principal
+- guiar naming, destino e derivacao
+- refletir imediatamente os novos componentes na biblioteca local
+
+Subtarefas do ciclo:
+
+- expandir modal de criacao de componente para incluir nome e destino
+- adicionar acao de "duplicar como novo componente" no painel de componentes
+- exibir melhor quais componentes foram criados localmente pelo browser
+- permitir reinsercao rapida dos componentes recem-criados
+- preparar UX para futuro fluxo de presets/blocos sem retrabalho grande
+
+Riscos:
+
+- excesso de opcoes no primeiro modal pode deixar o fluxo lento
+- biblioteca de componentes pode ficar confusa se nao houver distincoes claras entre origem e tipo
+
+### Ordem sugerida de implementacao
+
+1. Fechar Milestone 1 ponta a ponta.
+2. Implementar derivacao segura de componente existente.
+3. Melhorar a biblioteca local para refletir componentes e variacoes.
+4. So depois adicionar o builder MVP baseado em presets.
+
+### Validacao manual esperada
+
+Casos minimos para validar ao fim do ciclo:
+
+- extrair um bloco simples para um destino diferente de `src/components/visual-edit/`
+- extrair bloco com imagens e textos e confirmar props inferidas
+- duplicar um componente existente e reinseri-lo na mesma pagina
+- criar uma variacao sem alterar o componente original
+- inserir um preset simples como `Card` ou `Section` e continuar editando pelo browser
+
+### Dependencias para iniciar a Fase D
+
+A frente de importacao externa so deve comecar quando este ciclo estiver estavel em:
+
+- criacao de componente com destino configuravel
+- derivacao segura de componente existente
+- biblioteca local atualizando corretamente
+- insercao e reutilizacao de blocos criados pelo browser
+
+## Plano de Execucao Detalhado
+
+### Estrategia de execucao
+
+Executar a Fase C em ordem estrita:
+
+1. fechar o fluxo atual de `componentize`
+2. adicionar derivacao de componente existente
+3. consolidar a biblioteca local como hub de reutilizacao
+4. adicionar o builder MVP por presets
+
+Regra de execucao:
+
+- nao abrir Milestone 2 antes de a Milestone 1 estar funcional ponta a ponta
+- nao abrir presets antes de derivacao e biblioteca local estarem estaveis
+
+### Milestone 1 - Componentizacao com destino configuravel
+
+Objetivo:
+
+- transformar o fluxo atual de extracao em um fluxo confiavel e configuravel
+
+#### Entregas tecnicas
+
+- permitir enviar destino do novo componente a partir da extensao
+- validar destino no bridge
+- gerar arquivo no destino escolhido
+- recalcular import relativo do arquivo de origem
+- refletir o novo componente na biblioteca local imediatamente
+
+#### Checklist tecnico - Parser
+
+- [x] revisar a API de extracao atual e definir o payload minimo necessario para aceitar destino sem acoplar logica de filesystem ao parser
+- [x] manter `extractElementToComponentAtPath` focada em gerar o componente, sem conhecer paths do projeto
+- [x] revisar inferencia de props para garantir previsibilidade em texto, `src`, `alt` e `className`
+- [x] adicionar ou ajustar testes para confirmar que a extracao continua gerando JSX limpo e sem `data-oid`
+
+#### Checklist tecnico - Bridge
+
+- [x] expandir o payload de `componentize` para aceitar `name` e `destinationPath`
+- [x] criar funcao utilitaria para resolver o destino final dentro do projeto com validacao de seguranca
+- [x] impedir escrita fora do projeto ou em paths invalidos
+- [x] ajustar a logica de `componentFilePath` para aceitar pasta-base configuravel
+- [x] recalcular corretamente o import relativo entre arquivo de origem e componente gerado
+- [x] retornar no response o `filePath`, `relPath`, `componentName` e metadados necessarios para refresh da biblioteca
+- [x] tratar conflitos de nome com estrategia previsivel
+- [x] adicionar testes para:
+- [x] criar componente em destino padrao
+- [x] criar componente em subpasta customizada
+- [x] recalcular import relativo corretamente
+- [x] bloquear destino invalido
+
+#### Checklist tecnico - Extension
+
+- [x] expandir o fluxo de criacao de componente para incluir campo de nome e destino
+- [x] definir UX simples para destino:
+- [x] opcao rapida de pasta default
+- [x] opcao de subpasta comum
+- [x] campo manual como fallback
+- [x] enviar `destinationPath` no request de `componentize`
+- [x] ao sucesso, atualizar painel de componentes sem exigir reabertura manual
+
+#### Criterio de pronto - Milestone 1
+
+- [x] componente extraido pode ser salvo em destino configuravel com import correto e visibilidade imediata na biblioteca local
+
+### Milestone 2 - Derivacao segura de componente existente
+
+Objetivo:
+
+- permitir fork de componente existente antes de editar
+
+#### Entregas tecnicas
+
+- adicionar acao de duplicar componente existente como novo componente
+- persistir o novo arquivo sem alterar o original
+- permitir reinserir a variacao criada
+- distinguir original e derivacoes na biblioteca local
+
+#### Checklist tecnico - Parser
+
+- [ ] definir o que pode ser reaproveitado da extracao atual versus o que precisa de fluxo proprio para derivacao
+- [ ] garantir que qualquer JSX derivado nao carregue `data-oid` indevido no arquivo salvo
+- [ ] revisar compatibilidade com imports e props em componentes derivados
+- [ ] adicionar testes cobrindo derivacao de componente simples e componente com imports locais
+
+#### Checklist tecnico - Bridge
+
+- [ ] criar operacao nova para duplicar componente existente em novo arquivo
+- [ ] resolver como identificar o componente-fonte:
+- [ ] por `filePath`
+- [ ] por nome + path relativo
+- [ ] copiar conteudo e reescrever imports relativos quando o destino mudar
+- [ ] garantir nome novo sem colisao
+- [ ] reindexar componentes apos a derivacao
+- [ ] retornar metadados completos do novo componente
+- [ ] adicionar testes para:
+- [ ] derivar componente no mesmo diretório
+- [ ] derivar componente em subpasta diferente
+- [ ] preservar funcionamento de imports relativos
+- [ ] garantir que o original nao foi alterado
+
+#### Checklist tecnico - Extension
+
+- [ ] adicionar acao de `duplicar como novo componente` no painel de componentes
+- [ ] abrir modal com nome e destino do novo componente
+- [ ] permitir seguir direto para insercao ou edicao da nova variacao
+- [ ] destacar visualmente que se trata de uma derivacao
+- [ ] atualizar lista local sem refresh manual
+
+#### Validacao manual - Milestone 2
+
+- [ ] duplicar um componente existente e salvar com nome novo
+- [ ] confirmar que o componente original nao mudou
+- [ ] inserir a variacao criada na pagina atual
+- [ ] editar a variacao inserida e confirmar que o original continua intacto
+
+#### Criterio de pronto - Milestone 2
+
+- [ ] usuario consegue derivar componente existente com seguranca e reutilizar a copia no fluxo normal
+
+### Milestone 3 - Biblioteca local de componentes/blocos
+
+Objetivo:
+
+- transformar o painel de componentes em biblioteca operacional do que foi criado pelo browser
+
+#### Entregas tecnicas
+
+- destacar componentes criados pelo browser
+- destacar variacoes derivadas
+- melhorar insercao e descoberta
+- preparar o painel para presets futuros
+
+#### Checklist tecnico - Bridge
+
+- [ ] expandir o endpoint de componentes para devolver metadados de origem e tipo quando disponiveis
+- [ ] marcar componentes gerados pelo fluxo visual sempre que isso puder ser inferido de forma confiavel
+- [ ] devolver informacoes suficientes para agrupamento no painel
+
+#### Checklist tecnico - Extension
+
+- [ ] agrupar ou rotular componentes do projeto versus componentes criados visualmente
+- [ ] agrupar ou rotular variacoes derivadas
+- [ ] adicionar ordenacao priorizando componentes criados recentemente ou criados visualmente
+- [ ] adicionar acoes de insercao rapida para componentes recem-criados
+- [ ] evitar poluir a interface com controles excessivos
+
+#### Validacao manual - Milestone 3
+
+- [ ] criar componente novo e confirmar destaque na biblioteca
+- [ ] derivar componente e confirmar destaque como variacao
+- [ ] inserir rapidamente um item da biblioteca apos cria-lo
+
+#### Criterio de pronto - Milestone 3
+
+- [ ] biblioteca local funciona como ponto central de criacao, derivacao e reutilizacao
+
+### Milestone 4 - Builder MVP por presets
+
+Objetivo:
+
+- permitir criar componentes/blocos novos sem partir de selecao existente
+
+#### Entregas tecnicas
+
+- presets locais minimos
+- geracao do componente real no projeto
+- insercao do bloco no container atual
+
+#### Checklist tecnico - Parser
+
+- [ ] definir estrutura JSX inicial para cada preset MVP
+- [ ] garantir compatibilidade com a logica atual de insercao e componentizacao
+- [ ] adicionar testes de geracao para presets escolhidos
+
+#### Checklist tecnico - Bridge
+
+- [ ] definir payload de criacao por preset
+- [ ] gerar arquivo do componente com base no preset
+- [ ] inserir instancia do novo componente no alvo selecionado
+- [ ] indexar o novo componente e devolver metadados para a extensao
+- [ ] adicionar testes para:
+- [ ] criar preset `Section`
+- [ ] criar preset `Card`
+- [ ] criar preset `Hero`
+
+#### Checklist tecnico - Extension
+
+- [ ] criar UX minima para selecionar preset, nome e destino
+- [ ] permitir inserir o bloco no elemento/container selecionado
+- [ ] mostrar preview textual simples do preset escolhido
+- [ ] reaproveitar ao maximo os fluxos de nome/destino ja feitos nas milestones anteriores
+
+#### Validacao manual - Milestone 4
+
+- [ ] criar um `Card` em um container selecionado
+- [ ] criar uma `Section` em uma pagina vazia
+- [ ] criar um `Hero`, confirmar arquivo gerado e reinsercao pela biblioteca
+
+#### Criterio de pronto - Milestone 4
+
+- [ ] usuario consegue criar blocos/componentes iniciais pelo browser sem depender de uma selecao existente
+
+### Ordem detalhada de implementacao
+
+#### Sprint 1
+
+- [ ] ajustar contrato de `componentize` para suportar destino
+- [ ] implementar resolucao segura de destino no bridge
+- [ ] adaptar modal/acao na extensao para nome + destino
+- [ ] cobrir testes principais do fluxo de extracao
+- [ ] validar manualmente Milestone 1
+
+#### Sprint 2
+
+- [ ] implementar endpoint/acao de derivacao de componente existente
+- [ ] adaptar painel de componentes para expor a nova acao
+- [ ] cobrir testes de copia e reescrita de imports
+- [ ] validar manualmente Milestone 2
+
+#### Sprint 3
+
+- [ ] enriquecer metadados do catalogo local de componentes
+- [ ] melhorar agrupamento, labels e insercao rapida no painel
+- [ ] validar manualmente Milestone 3
+
+#### Sprint 4
+
+- [ ] definir presets MVP
+- [ ] implementar criacao por preset no bridge/parser
+- [ ] adaptar UX da extensao para criar bloco por preset
+- [ ] validar manualmente Milestone 4
+
+### Arquivos provaveis a tocar
+
+#### Parser
+
+- [ ] `packages/parser/src/code-edit/structure.ts`
+- [ ] `packages/parser/src/code-edit/structure.test.ts`
+
+#### Bridge
+
+- [ ] `packages/bridge/src/editor.ts`
+- [ ] `packages/bridge/src/components.ts` ou arquivo equivalente de catalogo
+- [ ] `packages/bridge/src/editor.test.ts`
+- [ ] `packages/bridge/src/components.test.ts`
+
+#### Extension
+
+- [ ] `packages/extension/src/content.ts`
+- [ ] `packages/extension/src/components-panel.ts`
+- [ ] arquivos de UI/modal relacionados ao fluxo de componentizacao
+
+### Gate final antes de abrir Fase D
+
+Todos os itens abaixo precisam estar marcados:
+
+- [ ] Milestone 1 concluida
+- [ ] Milestone 2 concluida
+- [ ] Milestone 3 concluida
+- [ ] Milestone 4 concluida
+- [ ] fluxo de criacao e derivacao validado manualmente
+- [ ] biblioteca local funcionando como ponto de reutilizacao
+
+## Dependencias Tecnicas por Camada
 
 ### Parser
 
-- Expandir alem de `text`, `class`, `class-add` e `attr`
-- Adicionar primitivas estruturais:
-  - `insert`
-  - `remove`
-  - `move`
-  - possivelmente `duplicate`
+- manter primitivas estruturais estaveis
+- expandir a extracao/componentizacao com suporte melhor a props e variacoes
+- suportar persistencia previsivel dos novos fluxos de bloco/componente
 
 ### Bridge
 
-- Expor novas rotas para acoes estruturais
-- Atualizar indexacao e refresh de arquivos apos mutacoes
-- Adicionar operacoes de assets
+- expor rotas adicionais para o fluxo de criacao/duplicacao de componentes
+- persistir arquivos em destinos escolhidos pelo usuario
+- atualizar indexacao e refresh apos mutacoes estruturais e de componentes
 
 ### Extensao
 
-- Novos controles de insercao/remocao
-- Drag and drop na arvore
-- Painel de assets
-- Ferramentas visuais especializadas
+- melhorar UX de criacao de componente
+- suportar escolha de pasta/destino
+- suportar fork/duplicacao de componente existente
+- destacar biblioteca local de blocos/componentes criados pelo browser
 
-## Ordem Recomendada de Execucao
+## Pendencias de QA Pospostas
 
-- [ ] Fase 1: `insert`, `remove`, `move`
-- [ ] Fase 2: assets de imagem
-- [ ] Fase 3: drag na arvore, duplicacao e criacao de componentes/blocos
-- [ ] Fase 4: importacao de bibliotecas e conversor externo
-- [ ] Fase 5: animacoes e ferramentas extras
+- validar insercao em `.tsx` e `.jsx`
+- revisar preview visual de drag and drop
+- validar duplicacao de componentes reutilizados e props dinamicas
+- revisar casos restantes de UX project-wide e sugestoes de classes
 
-## Proxima Implementacao
+## Criterio de Avanco para a Proxima Fase
 
-A proxima etapa apos este documento deve ser:
+A Fase D so deve comecar quando a Fase C estiver suficientemente estavel nestes pontos:
 
-- implementar `insert-element` no parser, bridge e extensao
-- em seguida `remove-element`
-- depois `move-element` com foco inicial em reordenacao pela arvore
+- criar componente pelo browser com fluxo previsivel
+- reinserir componente criado sem friccao
+- duplicar/derivar bloco existente com seguranca
+- biblioteca local de componentes funcionando como base de reutilizacao

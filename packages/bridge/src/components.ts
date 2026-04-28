@@ -1,14 +1,21 @@
 import { readFileSync, statSync, readdirSync } from 'fs';
-import { join } from 'path';
+import { join, sep } from 'path';
+
+/** How this component came to exist in the project. */
+export type ComponentOrigin = 'visual-edit' | 'project';
 
 export interface ComponentInfo {
-    name: string;      // PascalCase component name
-    relPath: string;   // path relative to projectRoot
-    filePath: string;  // absolute path
-    exports: string[]; // all exported component names in the file
+    name: string;           // PascalCase component name
+    relPath: string;        // path relative to projectRoot
+    filePath: string;       // absolute path
+    exports: string[];      // all exported component names in the file
+    origin: ComponentOrigin; // whether it was created by visual-edit or is a pre-existing project file
 }
 
 const IGNORE_DIRS = new Set(['node_modules', '.next', 'dist', '.git', 'build', 'out', '.turbo', '.cache', 'public']);
+
+/** Path segment that marks components created by visual-edit browser flows. */
+const VISUAL_EDIT_SEGMENT = `${sep}visual-edit${sep}`;
 
 // Directories where components typically live
 const COMPONENT_DIRS = new Set(['components', 'ui', 'features', 'modules', 'sections', 'blocks', 'widgets', 'shared', 'lib', 'src']);
@@ -71,7 +78,8 @@ function walkForComponents(dir: string, projectRoot: string, results: ComponentI
                 // Primary name: the file name without extension
                 const fileBase = entry.replace(/\.(tsx|jsx)$/, '');
                 const primary  = exports.includes(fileBase) ? fileBase : exports[0]!;
-                results.push({ name: primary, relPath, filePath: full, exports });
+                const origin: ComponentOrigin = full.includes(VISUAL_EDIT_SEGMENT) ? 'visual-edit' : 'project';
+                results.push({ name: primary, relPath, filePath: full, exports, origin });
             }
         } catch { /* skip unreadable */ }
     }

@@ -12,7 +12,7 @@ import {
     traverse,
 } from '@visual-edit/parser';
 import { buildIndex, getSourceFiles, refreshFile, type OidIndex } from './scanner';
-import { applyEdit, type EditRequest } from './editor';
+import { applyEdit, duplicateComponent, type EditRequest } from './editor';
 import {
     findI18nFiles,
     detectI18nKey,
@@ -21,6 +21,7 @@ import {
 } from './i18n';
 import { readTheme, writeTheme, type ThemeUpdate } from './theme';
 import { listComponents } from './components';
+import { createPreset, PRESETS, type PresetKind } from './presets';
 import { writeComponentPreview, type ComponentPreviewRequest } from './preview';
 import { listProjectClasses } from './classes';
 import { deleteAsset, listAssets, renameAsset, uploadAsset } from './assets';
@@ -142,6 +143,8 @@ export function startServer(projectRoot: string): void {
         // Refresh index after edit. Instance edits can modify the parent usage
         // file rather than the OID template file.
         refreshFile(result.filePath ?? loc.filePath, index);
+        // For componentize, also index the newly created component file.
+        if (result.newFilePath) refreshFile(result.newFilePath, index);
 
         if (!result.ok) {
             return c.json(result, 500);
@@ -149,9 +152,10 @@ export function startServer(projectRoot: string): void {
 
         const undoCount = pushUndoEntry(projectRoot, `${body.kind}:${body.oid}`, before);
         const relPath = (result.filePath ?? loc.filePath).replace(projectRoot + '/', '');
+        const newRelPath = result.newFilePath ? result.newFilePath.replace(projectRoot + '/', '') : undefined;
         console.log(`[visual-edit] ${body.kind} edit → ${relPath} (oid=${body.oid})`);
 
-        return c.json({ ok: true, filePath: relPath, undoCount });
+        return c.json({ ok: true, filePath: relPath, newFilePath: newRelPath, componentName: result.componentName, undoCount });
     });
 
     app.post('/undo', (c) => {
@@ -222,6 +226,22 @@ export function startServer(projectRoot: string): void {
     app.get('/components', (c) => {
         const components = listComponents(projectRoot);
         return c.json({ ok: true, components });
+    });
+
+    /** GET /presets — returns available component presets */
+    app.get('/presets', (c) => {
+        return c.json({ ok: true, presets: PRESETS });
+    });
+
+    /** POST /preset-create { kind, name, destinationDir? } — creates a preset component file */
+    app.post('/preset-create', async (c) => {
+        const body = await c.req.json<{ kind?: string; name?: string; destinationDir?: string }>();
+        if (!body.kind || !body.name) return c.json({ ok: false, error: 'kind and name required' }, 400);
+        const result = createPreset(projectRoot, body.kind as PresetKind, body.name, body.destinationDir);
+        if (!result.ok) return c.json(result, 400);
+        if (result.newFilePath) refreshFile(result.newFilePath, index);
+        console.log(`[visual-edit] preset-create → ${result.relPath} (${body.kind})`);
+        return c.json(result);
     });
 
     /** GET /classes?tag=button&limit=60 — lists project-wide class tokens and repeated bundles */
@@ -314,6 +334,19 @@ export function startServer(projectRoot: string): void {
         } catch (error) {
             return c.json({ ok: false, error: error instanceof Error ? error.message : 'Delete failed' }, 500);
         }
+    });
+
+    /** POST /component-duplicate { filePath, name, destinationDir? }
+     *  Copies an existing component to a new file, rewriting imports and renaming exports. */
+    app.post('/component-duplicate', async (c) => {
+        const body = await c.req.json<{ filePath?: string; name?: string; destinationDir?: string }>();
+        if (!body.filePath || !body.name) return c.json({ ok: false, error: 'filePath and name required' }, 400);
+        const sourcePath = body.filePath.startsWith(projectRoot) ? body.filePath : join(projectRoot, body.filePath);
+        const result = duplicateComponent(projectRoot, sourcePath, body.name, body.destinationDir);
+        if (!result.ok) return c.json(result, 400);
+        if (result.newFilePath) refreshFile(result.newFilePath, index);
+        console.log(`[visual-edit] component-duplicate → ${result.relPath}`);
+        return c.json(result);
     });
 
     /** POST /open-file { filePath, line? } — opens file in VS Code */
