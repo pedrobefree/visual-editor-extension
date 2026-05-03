@@ -8,6 +8,8 @@
 
 import { attachDrag } from './drag-util';
 import { subscribeLanguageChange, t } from './i18n';
+import { resolveShadcnInstallErrorMessage, resolveShadcnListErrorMessage } from './shadcn-errors';
+import { captureFocusSnapshot, shouldAutofocusProjectSearch, type FocusSnapshot } from './components-panel-focus';
 
 const BRIDGE = 'http://localhost:5179';
 const OID_ATTR = 'data-oid';
@@ -33,8 +35,30 @@ interface PagePattern {
     isDefault?: boolean;
 }
 
+interface ShadcnRegistryItem {
+    name: string;
+    type: string;
+    registry: string;
+    addCommandArgument: string;
+}
+
+export interface PreviewErrorPayload {
+    code?: 'missing-preview-dependencies';
+    error?: string;
+    missingDependencies?: string[];
+    installCommand?: string;
+    packageManager?: 'bun' | 'pnpm' | 'yarn' | 'npm';
+}
+
 function attrSelectorValue(value: string): string {
     return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
 }
 
 function topLevelMatches(elements: HTMLElement[]): HTMLElement[] {
@@ -130,6 +154,19 @@ const CSS = `
 .icon-btn.create-btn.active { color: white; border-color: #6366f1; background: #1e1b4b; }
 .section-label { padding: 8px 12px 4px; color: #555; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; border-bottom: 1px solid #1a1a1a; }
 #preset-form .preset-help { color: #666; font-size: 10px; line-height: 1.4; }
+.shadcn-results { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+.shadcn-item { border: 1px solid #262626; border-radius: 8px; padding: 8px; background: #121212; }
+.shadcn-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.shadcn-name { color: #e5e5e5; font-size: 11px; font-weight: 600; }
+.shadcn-type { color: #a5b4fc; font-size: 9px; border: 1px solid #3730a3; border-radius: 999px; padding: 2px 6px; text-transform: uppercase; letter-spacing: .04em; }
+.shadcn-arg { color: #666; font-size: 9px; font-family: monospace; margin-top: 4px; }
+.shadcn-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+.action-btn.install-btn { background: #1e1b4b; border-color: #4338ca; color: #c7d2fe; }
+.action-btn.install-btn:hover { background: #4338ca; border-color: #4338ca; color: white; }
+.action-btn.install-btn:disabled { background: #1e1e1e; border-color: #2a2a2a; color: #666; }
+.shadcn-feedback { margin-top: 6px; font-size: 10px; line-height: 1.4; }
+.shadcn-feedback.error { color: #fca5a5; }
+.shadcn-feedback.success { color: #86efac; }
 #empty { padding: 28px; text-align: center; color: #444; font-size: 11px; line-height: 1.6; }
 .state-msg { padding: 28px; text-align: center; font-size: 11px; line-height: 1.6; }
 .state-loading { color: #555; }
@@ -142,6 +179,8 @@ export interface ComponentsPanelCallbacks {
     onEditInstances: (oids: string[], componentName: string) => void;
     /** Called when the user asks to open an off-page component preview in the browser. */
     onOpenPreview: (path: string, componentName: string) => void;
+    /** Called when preview generation fails and the host should surface the reason. */
+    onPreviewError?: (error: PreviewErrorPayload) => void;
     /** Called in insertion mode when the user picks a component to insert. */
     onInsertComponent?: (component: ComponentInfo) => void;
     onPageCreated?: (routePath: string) => void;
@@ -167,9 +206,16 @@ export class ComponentsPanel {
     private deleteFilePath: string | null = null;
     private duplicateFilePath: string | null = null;
     private showCreateForm = false;
-    private createMode: 'preset' | 'page' = 'preset';
+    private createMode: 'preset' | 'page' | 'shadcn' = 'preset';
     private presets: Array<{ kind: string; label: string; description: string }> = [];
     private pagePatterns: PagePattern[] = [];
+    private shadcnItems: ShadcnRegistryItem[] = [];
+    private shadcnQuery = '';
+    private shadcnLoading = false;
+    private shadcnError = '';
+    private shadcnInstallArg = '';
+    private shadcnInstallFeedback = '';
+    private shadcnInstallFeedbackTone: 'success' | 'error' | '' = '';
 
     constructor(callbacks: ComponentsPanelCallbacks) {
         this.callbacks = callbacks;
@@ -214,20 +260,25 @@ export class ComponentsPanel {
 
     private async loadComponents(): Promise<void> {
         try {
-            const [compRes] = await Promise.all([
-                fetch(`${BRIDGE}/components`, { signal: AbortSignal.timeout(5000) }),
+            await Promise.all([
+                this.reloadComponentsList(),
                 this.loadPresets(),
                 this.loadPagePatterns(),
+                this.loadShadcnItems(),
             ]);
-            const data = await compRes.json() as { ok: boolean; components?: ComponentInfo[]; error?: string };
-            if (!data.ok || !data.components) { this.renderState('error', data.error); return; }
-            this.components = data.components;
-            await this.loadPresence();
             this.state = 'ready';
             this.render();
         } catch {
             this.renderState('error', t('componentsBridgeOffline'));
         }
+    }
+
+    private async reloadComponentsList(): Promise<void> {
+        const res = await fetch(`${BRIDGE}/components`, { signal: AbortSignal.timeout(5000) });
+        const data = await res.json() as { ok: boolean; components?: ComponentInfo[]; error?: string };
+        if (!data.ok || !data.components) throw new Error(data.error ?? t('componentsError'));
+        this.components = data.components;
+        await this.loadPresence();
     }
 
     private async loadPresence(): Promise<void> {
@@ -261,6 +312,7 @@ export class ComponentsPanel {
     }
 
     private render(): void {
+        const focusSnapshot = captureFocusSnapshot(this.shadow.activeElement);
         const filteredRaw = this.query
             ? this.components.filter(c =>
                 c.name.toLowerCase().includes(this.query) ||
@@ -323,6 +375,57 @@ export class ComponentsPanel {
             offPageVisual.length ? `<div class="section-label">${t('componentsVisualEditSection')}</div>${offPageVisual.map(itemHtml).join('')}` : '',
             offPageProject.length ? `<div class="section-label">${t('componentsOther')}</div>${offPageProject.map(itemHtml).join('')}` : '',
         ].join('');
+        const shadcnResultsHtml = this.shadcnLoading
+            ? `<div class="state-msg state-loading">${t('componentsShadcnLoading')}</div>`
+            : this.shadcnError
+            ? `<div class="state-msg state-error">${this.shadcnError}</div>`
+            : this.shadcnItems.length
+            ? this.shadcnItems.map(item => `
+                <div class="shadcn-item">
+                  <div class="shadcn-top">
+                    <div class="shadcn-name">${escapeHtml(item.name)}</div>
+                    <div class="shadcn-type">${item.type.replace('registry:', '')}</div>
+                  </div>
+                  <div class="shadcn-arg">${escapeHtml(item.addCommandArgument)}</div>
+                  <div class="shadcn-actions">
+                    <button
+                      class="action-btn install-btn"
+                      data-shadcn-install="${escapeHtml(item.addCommandArgument)}"
+                      ${this.shadcnInstallArg === item.addCommandArgument ? 'disabled' : ''}
+                    >${this.shadcnInstallArg === item.addCommandArgument ? t('componentsShadcnInstalling') : t('componentsShadcnInstall')}</button>
+                  </div>
+                </div>
+            `).join('')
+            : `<div class="state-msg state-loading">${t('componentsShadcnEmpty')}</div>`;
+        const createFormBody = this.createMode === 'preset'
+            ? `
+              <div class="preset-row">
+                <select id="preset-kind">
+                  ${this.presets.map(p => `<option value="${p.kind}" title="${p.description}">${p.label}</option>`).join('')}
+                </select>
+                <input id="preset-name" type="text" placeholder="${t('componentsPresetNamePlaceholder')}" spellcheck="false" />
+              </div>`
+            : this.createMode === 'page'
+            ? `
+              <div class="preset-row">
+                <select id="page-pattern">
+                  ${this.pagePatterns.map(pattern => `<option value="${pattern.id}"${pattern.isDefault ? ' selected' : ''}>${pattern.label}</option>`).join('')}
+                </select>
+              </div>
+              <div class="preset-row">
+                <input id="page-route" type="text" placeholder="${t('componentsPageRoutePlaceholder')}" spellcheck="false" />
+              </div>
+              <div class="preset-help">${t('componentsPageHelp')}</div>`
+            : `
+              <div class="preset-row">
+                <input id="shadcn-search" type="text" value="${escapeHtml(this.shadcnQuery)}" placeholder="${t('componentsShadcnSearchPlaceholder')}" spellcheck="false" />
+              </div>
+              <div class="preset-help">${t('componentsShadcnPhaseHint')}</div>
+              ${this.shadcnInstallFeedback ? `<div class="shadcn-feedback ${this.shadcnInstallFeedbackTone}">${escapeHtml(this.shadcnInstallFeedback)}</div>` : ''}
+              <div class="shadcn-results">${shadcnResultsHtml}</div>`;
+        const createFormAction = this.createMode === 'shadcn'
+            ? ''
+            : `<button class="action-btn dup-confirm" id="preset-submit">${this.createMode === 'preset' ? t('componentsPresetCreate') : t('componentsPageCreate')}</button>`;
 
         const wrapper = document.createElement('div');
         wrapper.innerHTML = `
@@ -341,27 +444,13 @@ export class ComponentsPanel {
                 <select id="create-mode">
                   <option value="preset"${this.createMode === 'preset' ? ' selected' : ''}>${t('componentsCreateModePreset')}</option>
                   <option value="page"${this.createMode === 'page' ? ' selected' : ''}>${t('componentsCreateModePage')}</option>
+                  <option value="shadcn"${this.createMode === 'shadcn' ? ' selected' : ''}>${t('componentsCreateModeShadcn')}</option>
                 </select>
               </div>
-              ${this.createMode === 'preset' ? `
-              <div class="preset-row">
-                <select id="preset-kind">
-                  ${this.presets.map(p => `<option value="${p.kind}" title="${p.description}">${p.label}</option>`).join('')}
-                </select>
-                <input id="preset-name" type="text" placeholder="${t('componentsPresetNamePlaceholder')}" spellcheck="false" />
-              </div>` : `
-              <div class="preset-row">
-                <select id="page-pattern">
-                  ${this.pagePatterns.map(pattern => `<option value="${pattern.id}"${pattern.isDefault ? ' selected' : ''}>${pattern.label}</option>`).join('')}
-                </select>
-              </div>
-              <div class="preset-row">
-                <input id="page-route" type="text" placeholder="${t('componentsPageRoutePlaceholder')}" spellcheck="false" />
-              </div>
-              <div class="preset-help">${t('componentsPageHelp')}</div>`}
+              ${createFormBody}
               <div class="preset-actions">
                 <button class="action-btn" id="preset-cancel">${t('componentsDeleteCancel')}</button>
-                <button class="action-btn dup-confirm" id="preset-submit">${this.createMode === 'preset' ? t('componentsPresetCreate') : t('componentsPageCreate')}</button>
+                ${createFormAction}
               </div>
             </div>` : ''}
             <div class="search-wrap">
@@ -376,7 +465,18 @@ export class ComponentsPanel {
         this.shadow.appendChild(style);
         this.shadow.appendChild(wrapper);
         this.bindEvents();
+        this.restoreFocus(focusSnapshot);
         this.attachDragToPanelAndHeader();
+    }
+
+    private restoreFocus(snapshot: FocusSnapshot | null): void {
+        if (!snapshot) return;
+        const input = this.shadow.querySelector<HTMLInputElement | HTMLTextAreaElement>(`#${snapshot.id}`);
+        if (!input) return;
+        input.focus();
+        if (snapshot.selectionStart !== null && snapshot.selectionEnd !== null) {
+            input.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);
+        }
     }
 
     private blockEvents(): void {
@@ -403,10 +503,11 @@ export class ComponentsPanel {
             this.showCreateForm = !this.showCreateForm;
             if (this.showCreateForm && !this.presets.length) this.loadPresets();
             if (this.showCreateForm && !this.pagePatterns.length) this.loadPagePatterns();
+            if (this.showCreateForm && !this.shadcnItems.length) this.loadShadcnItems();
             this.render();
             if (this.showCreateForm) {
                 requestAnimationFrame(() => {
-                    const selector = this.createMode === 'preset' ? '#preset-name' : '#page-route';
+                    const selector = this.createMode === 'preset' ? '#preset-name' : this.createMode === 'page' ? '#page-route' : '#shadcn-search';
                     (this.shadow.querySelector(selector) as HTMLInputElement | null)?.focus();
                 });
             }
@@ -419,11 +520,14 @@ export class ComponentsPanel {
         });
 
         this.shadow.querySelector('#create-mode')?.addEventListener('change', (e) => {
-            const value = (e.target as HTMLSelectElement).value === 'page' ? 'page' : 'preset';
+            const raw = (e.target as HTMLSelectElement).value;
+            const value = raw === 'page' || raw === 'shadcn' ? raw : 'preset';
             this.createMode = value;
+            this.shadcnInstallFeedback = '';
+            this.shadcnInstallFeedbackTone = '';
             this.render();
             requestAnimationFrame(() => {
-                const selector = value === 'preset' ? '#preset-name' : '#page-route';
+                const selector = value === 'preset' ? '#preset-name' : value === 'page' ? '#page-route' : '#shadcn-search';
                 (this.shadow.querySelector(selector) as HTMLInputElement | null)?.focus();
             });
         });
@@ -451,6 +555,20 @@ export class ComponentsPanel {
             if (e.key === 'Enter') submitPreset();
             if (e.key === 'Escape') { this.showCreateForm = false; this.render(); }
         });
+        (this.shadow.querySelector('#shadcn-search') as HTMLInputElement | null)?.addEventListener('input', (e) => {
+            this.shadcnQuery = (e.target as HTMLInputElement).value;
+            void this.loadShadcnItems(this.shadcnQuery);
+        });
+
+        this.shadow.querySelectorAll<HTMLElement>('[data-shadcn-install]').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const addCommandArgument = btn.dataset.shadcnInstall ?? '';
+                const item = this.shadcnItems.find(entry => entry.addCommandArgument === addCommandArgument);
+                if (!item) return;
+                await this.installShadcnItem(item);
+            });
+        });
 
         // Search
         const searchInput = this.shadow.querySelector('#comp-search') as HTMLInputElement | null;
@@ -463,8 +581,10 @@ export class ComponentsPanel {
             nextInput?.focus();
             nextInput?.setSelectionRange(cursor, cursor);
         });
-        searchInput?.focus();
-        searchInput?.setSelectionRange(this.searchValue.length, this.searchValue.length);
+        if (shouldAutofocusProjectSearch(this.showCreateForm, this.createMode)) {
+            searchInput?.focus();
+            searchInput?.setSelectionRange(this.searchValue.length, this.searchValue.length);
+        }
 
         // Open in editor
         this.shadow.querySelectorAll('.open-btn').forEach(btn => {
@@ -588,11 +708,24 @@ export class ComponentsPanel {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ filePath, name }),
                     });
-                    const data = await res.json() as { ok: boolean; path?: string; error?: string };
-                    if (!data.ok || !data.path) throw new Error(data.error ?? t('componentsPreviewUnavailable'));
+                    const data = await res.json() as { ok: boolean; path?: string; error?: string; code?: PreviewErrorPayload['code']; missingDependencies?: string[]; installCommand?: string; packageManager?: PreviewErrorPayload['packageManager'] };
+                    if (!data.ok || !data.path) {
+                        this.callbacks.onPreviewError?.({
+                            code: data.code,
+                            error: data.error ?? t('componentsPreviewUnavailable'),
+                            missingDependencies: data.missingDependencies,
+                            installCommand: data.installCommand,
+                            packageManager: data.packageManager,
+                        });
+                        return;
+                    }
                     this.callbacks.onOpenPreview(data.path, name);
-                } catch {
-                    // The editor-open button remains available as the fallback.
+                } catch (error) {
+                    if (error instanceof Error) {
+                        this.callbacks.onPreviewError?.({ error: error.message });
+                    } else {
+                        this.callbacks.onPreviewError?.({ error: t('componentsPreviewUnavailable') });
+                    }
                 }
             });
         });
@@ -618,6 +751,64 @@ export class ComponentsPanel {
                 if (this.showCreateForm && this.createMode === 'page') this.render();
             }
         } catch { /* non-critical */ }
+    }
+
+    private async loadShadcnItems(query = ''): Promise<void> {
+        this.shadcnLoading = true;
+        this.shadcnError = '';
+        if (this.showCreateForm && this.createMode === 'shadcn') this.render();
+        try {
+            const url = new URL(`${BRIDGE}/shadcn/items`);
+            if (query.trim()) url.searchParams.set('q', query.trim());
+            url.searchParams.set('limit', '40');
+            const res = await fetch(url.toString(), { signal: AbortSignal.timeout(8000) });
+            const data = await res.json() as { ok: boolean; items?: ShadcnRegistryItem[]; code?: string; error?: string };
+            if (!data.ok) {
+                this.shadcnItems = [];
+                this.shadcnError = resolveShadcnListErrorMessage(data, t);
+            } else {
+                this.shadcnItems = data.items ?? [];
+                this.shadcnError = '';
+            }
+        } catch {
+            this.shadcnItems = [];
+            this.shadcnError = t('componentsShadcnError');
+        } finally {
+            this.shadcnLoading = false;
+            if (this.showCreateForm && this.createMode === 'shadcn') this.render();
+        }
+    }
+
+    private async installShadcnItem(item: ShadcnRegistryItem): Promise<void> {
+        this.shadcnInstallArg = item.addCommandArgument;
+        this.shadcnInstallFeedback = '';
+        this.shadcnInstallFeedbackTone = '';
+        this.render();
+
+        try {
+            const res = await fetch(`${BRIDGE}/shadcn/install`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ item }),
+            });
+            const data = await res.json() as { ok: boolean; code?: string; error?: string; conflictPaths?: string[]; installedItem?: ShadcnRegistryItem };
+
+            if (!data.ok) {
+                this.shadcnInstallFeedbackTone = 'error';
+                this.shadcnInstallFeedback = resolveShadcnInstallErrorMessage(data, t);
+                return;
+            }
+
+            await this.reloadComponentsList();
+            this.shadcnInstallFeedbackTone = 'success';
+            this.shadcnInstallFeedback = t('componentsShadcnInstallSuccess', { name: data.installedItem?.name ?? item.name });
+        } catch {
+            this.shadcnInstallFeedbackTone = 'error';
+            this.shadcnInstallFeedback = t('componentsShadcnInstallError');
+        } finally {
+            this.shadcnInstallArg = '';
+            this.render();
+        }
     }
 
     private async createPresetComponent(kind: string, name: string): Promise<void> {

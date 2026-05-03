@@ -1,6 +1,27 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { createHash } from 'crypto';
 import { dirname, relative, join, sep } from 'path';
+import { getCompoundPreviewSeed } from './preview-seeds';
+import { instrumentSourceWithOids } from './oid';
+
+const IMPORT_RE = /import\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?["']([^"']+)["'];?/g;
+const EXTERNAL_PREVIEW_IMPORT_ALLOWLIST = new Set([
+    'react',
+    'react/jsx-runtime',
+    'react/jsx-dev-runtime',
+    'next',
+    'next/link',
+    'next/image',
+    'next/navigation',
+    'next/font/google',
+    'next/font/local',
+]);
+const PACKAGE_MANAGER_COMMANDS: Record<string, string> = {
+    bun: 'bun add',
+    pnpm: 'pnpm add',
+    yarn: 'yarn add',
+    npm: 'npm install',
+};
 
 function toImportPath(fromFile: string, toFile: string): string {
     let rel = relative(dirname(fromFile), toFile).split(sep).join('/');
@@ -35,6 +56,89 @@ function isDefaultExportedComponent(content: string, name: string): boolean {
     return new RegExp(`export\\s+default\\s+(?:function|class)\\s+${escaped}\\b`).test(content) ||
         new RegExp(`export\\s+default\\s+${escaped}\\b`).test(content) ||
         new RegExp(`export\\s*\\{[^}]*\\b${escaped}\\s+as\\s+default\\b[^}]*\\}`).test(content);
+}
+
+function extractExternalImports(content: string): string[] {
+    const imports = new Set<string>();
+    let match: RegExpExecArray | null;
+
+    while ((match = IMPORT_RE.exec(content)) !== null) {
+        const source = match[1]?.trim();
+        if (!source) continue;
+        if (source.startsWith('.') || source.startsWith('/') || source.startsWith('@/') || source.startsWith('~/')) continue;
+        if (EXTERNAL_PREVIEW_IMPORT_ALLOWLIST.has(source)) continue;
+        imports.add(source);
+    }
+
+    return Array.from(imports);
+}
+
+function readProjectPackageNames(projectRoot: string): Set<string> {
+    const names = new Set<string>();
+    const packageJsonPath = join(projectRoot, 'package.json');
+
+    if (!existsSync(packageJsonPath)) return names;
+
+    try {
+        const parsed = JSON.parse(readFileSync(packageJsonPath, 'utf-8')) as {
+            dependencies?: Record<string, string>;
+            devDependencies?: Record<string, string>;
+            peerDependencies?: Record<string, string>;
+        };
+
+        for (const section of [parsed.dependencies, parsed.devDependencies, parsed.peerDependencies]) {
+            if (!section) continue;
+            for (const name of Object.keys(section)) names.add(name);
+        }
+    } catch {
+        return names;
+    }
+
+    return names;
+}
+
+function detectProjectPackageManager(projectRoot: string): 'bun' | 'pnpm' | 'yarn' | 'npm' {
+    const packageJsonPath = join(projectRoot, 'package.json');
+    if (existsSync(packageJsonPath)) {
+        try {
+            const parsed = JSON.parse(readFileSync(packageJsonPath, 'utf-8')) as { packageManager?: string };
+            const declared = parsed.packageManager?.split('@')[0]?.trim();
+            if (declared === 'bun' || declared === 'pnpm' || declared === 'yarn' || declared === 'npm') return declared;
+        } catch {
+            // ignore malformed package.json here; fall back to lockfiles
+        }
+    }
+
+    if (existsSync(join(projectRoot, 'pnpm-lock.yaml'))) return 'pnpm';
+    if (existsSync(join(projectRoot, 'yarn.lock')) || existsSync(join(projectRoot, 'yarn.lock.gz'))) return 'yarn';
+    if (existsSync(join(projectRoot, 'bun.lock')) || existsSync(join(projectRoot, 'bun.lockb'))) return 'bun';
+    return 'npm';
+}
+
+function findMissingRuntimeDependencies(projectRoot: string, componentContent: string): string[] {
+    const imports = extractExternalImports(componentContent);
+    if (!imports.length) return [];
+
+    const installed = readProjectPackageNames(projectRoot);
+    return imports.filter(name => !installed.has(name));
+}
+
+function buildMissingDependencyPreviewPayload(projectRoot: string, missingDependencies: string[]): {
+    code: 'missing-preview-dependencies';
+    error: string;
+    missingDependencies: string[];
+    installCommand: string;
+    packageManager: 'bun' | 'pnpm' | 'yarn' | 'npm';
+} {
+    const packageManager = detectProjectPackageManager(projectRoot);
+    const installCommand = `${PACKAGE_MANAGER_COMMANDS[packageManager]} ${missingDependencies.join(' ')}`;
+    return {
+        code: 'missing-preview-dependencies',
+        error: `Missing runtime dependencies for preview: ${missingDependencies.join(', ')}. Install with \`${installCommand}\`. Compatibility warning: these packages may conflict with the current project's UI primitives, versions, or conventions. Review before installing.`,
+        missingDependencies,
+        installCommand,
+        packageManager,
+    };
 }
 
 function splitTopLevelParams(params: string): string[] {
@@ -281,8 +385,12 @@ export interface ComponentPreviewRequest {
 
 export interface ComponentPreviewResult {
     ok: boolean;
+    code?: 'missing-preview-dependencies';
     path?: string;
     error?: string;
+    missingDependencies?: string[];
+    installCommand?: string;
+    packageManager?: 'bun' | 'pnpm' | 'yarn' | 'npm';
 }
 
 const PREVIEW_ROUTE_ROOT = 'visual-edit-kit-component-preview';
@@ -329,11 +437,23 @@ export function writeComponentPreview(projectRoot: string, req: ComponentPreview
             error: `${req.name} is not a visual component preview target`,
         };
     }
+    const missingDependencies = findMissingRuntimeDependencies(projectRoot, componentContent);
+    if (missingDependencies.length > 0) {
+        return {
+            ok: false,
+            ...buildMissingDependencyPreviewPayload(projectRoot, missingDependencies),
+        };
+    }
     const previewProps = buildPreviewProps(componentContent, req.name);
     const providers = buildProviderScaffold(projectRoot, componentContent);
-    const componentImport = isDefaultExportedComponent(componentContent, req.name)
+    const baseComponentImport = isDefaultExportedComponent(componentContent, req.name)
         ? `import PreviewComponent from "${importPath}";`
         : `import { ${req.name} as PreviewComponent } from "${importPath}";`;
+    const previewSeed = getCompoundPreviewSeed(req.name, exportedNames, importPath);
+    const componentImport = previewSeed
+        ? `${baseComponentImport}\n${previewSeed.imports}`
+        : baseComponentImport;
+    const componentTag = previewSeed?.componentTag ?? providers.componentTag;
 
     const clientImportPath = toImportPath(pagePath, clientPath);
     const pageSource = `export const dynamic = "force-dynamic";
@@ -381,7 +501,7 @@ export default function VisualEditComponentPreviewPage() {
         <div className="w-full max-w-3xl rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
           <VisualEditPreviewErrorBoundary>
             ${providers.wrapStart}
-              ${providers.componentTag}
+              ${componentTag}
             ${providers.wrapEnd}
           </VisualEditPreviewErrorBoundary>
         </div>
@@ -393,9 +513,11 @@ export default function VisualEditComponentPreviewPage() {
 
     try {
         mkdirSync(dirname(pagePath), { recursive: true });
+        writeFileSync(clientPath, instrumentSourceWithOids(clientPath, clientSource), 'utf-8');
         writeFileSync(pagePath, pageSource, 'utf-8');
-        writeFileSync(clientPath, clientSource, 'utf-8');
     } catch (error) {
+        rmSync(pagePath, { force: true });
+        rmSync(clientPath, { force: true, recursive: true });
         return { ok: false, error: error instanceof Error ? error.message : 'Could not write preview page' };
     }
 

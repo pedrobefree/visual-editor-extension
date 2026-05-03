@@ -367,14 +367,177 @@ Racional:
 
 ### Objetivo do proximo ciclo
 
-Permitir que o usuario traga componentes/blocos de bibliotecas externas para dentro do projeto atual, com insercao assistida e adaptacao minima ao stack do projeto.
+Permitir que o usuario traga componentes/blocos de bibliotecas externas para dentro do projeto atual, com isolamento total da instalacao de origem e adaptacao segura ao stack do projeto.
 
 ### Escopo sugerido para o proximo ciclo (Recurso 9 - Shadcn)
 
 1. Listar componentes disponiveis no Shadcn CLI
-2. Instalar o componente escolhido via CLI no projeto do usuario
-3. Confirmar instalacao e exibir o componente na biblioteca local da extensao
-4. Permitir insercao direta do componente instalado na pagina atual
+2. Gerar o componente escolhido em um workspace temporario isolado, fora do projeto do usuario
+3. Adaptar imports, aliases, utils e destino de arquivos ao padrao do projeto alvo
+4. Persistir apenas os arquivos finais aprovados no projeto do usuario
+5. Confirmar importacao e exibir o componente na biblioteca local da extensao
+6. Permitir insercao direta do componente importado na pagina atual
+
+### Sequencia operacional da Fase E
+
+#### Milestone 1 - Catalogo Shadcn no bridge e na extensao
+
+Objetivo:
+
+- listar e buscar itens disponiveis no registry oficial do Shadcn sem ainda escrever arquivos no projeto
+
+Entregas funcionais:
+
+- bridge consulta o `shadcn list @shadcn` no contexto do projeto
+- extensao exibe busca e listagem minima de componentes/blocos encontrados
+- tipos retornados pelo registry ficam visiveis para preparar a fase de instalacao
+
+Checklist tecnico:
+
+- [x] criar modulo do bridge para consultar o CLI do Shadcn com parse seguro da saida
+- [x] expor endpoint HTTP para listagem com `query`, `limit` e `offset`
+- [x] adicionar testes do bridge cobrindo sucesso, filtros e erro do CLI
+- [x] adaptar o painel de componentes para exibir um modo `Shadcn`
+- [x] permitir busca textual no catalogo exibido pela extensao
+
+Criterio de pronto:
+
+- [ ] usuario consegue abrir o catalogo Shadcn na extensao e navegar pelos itens disponiveis
+
+#### Milestone 2 - Importacao isolada de item Shadcn
+
+Objetivo:
+
+- impedir que o `shadcn add` altere o comportamento, as dependencias ou os arquivos padrao do projeto host
+
+Entregas funcionais:
+
+- bridge deixa de executar o `shadcn add` diretamente no projeto do usuario
+- bridge cria um workspace temporario descartavel para materializar o item selecionado
+- apenas os arquivos finais adaptados sao copiados para um namespace isolado do Visual Edit no projeto host
+- `package.json`, lockfiles, `components.json` e quaisquer arquivos de UI existentes do host deixam de ser alvo do fluxo de importacao
+
+Checklist tecnico:
+
+- [ ] criar um pipeline no bridge para provisionar um workspace temporario fora do projeto host
+- [ ] gerar nesse workspace uma configuracao minima do shadcn compativel com o item escolhido
+- [ ] executar `shadcn add` somente dentro do workspace temporario
+- [ ] coletar os arquivos gerados pelo CLI e montar um manifest de saida para a fase de adaptacao
+- [ ] bloquear a persistencia de arquivos quando o pipeline detectar saida vazia, inesperada ou ambigua
+- [ ] adicionar testes unitarios do bridge cobrindo workspace temporario, coleta de arquivos e descarte ao final do fluxo
+- [ ] adicionar testes garantindo que o fluxo nao modifica `package.json`, lockfiles ou arquivos existentes do projeto host
+
+Criterio de pronto:
+
+- [ ] usuario consegue importar um item oficial do Shadcn sem que o projeto host receba alteracoes fora dos arquivos finais do componente importado
+
+#### Milestone 3 - Adaptacao segura ao padrao do projeto
+
+Objetivo:
+
+- transformar a saida bruta do Shadcn em codigo persistivel no projeto alvo sem sobrescrever convencoes locais
+
+Objetivo:
+
+- aplicar adaptacoes deterministicas de baixo risco antes de gravar o componente no host
+
+Entregas funcionais:
+
+- reescrita de aliases para o namespace isolado do Visual Edit
+- adaptacao de imports de utilitarios locais para os padroes detectados no projeto, como `cn` vs `cx`
+- normalizacao de nomes de arquivo e pasta conforme a convencao do projeto, sem tocar componentes preexistentes
+- persistencia dos arquivos em uma area controlada, como `components/visual-edit/shadcn` ou equivalente inferido
+
+Checklist tecnico:
+
+- [ ] mapear no bridge os padroes minimos do projeto alvo: alias raiz, convencao de pasta de componentes e helper utilitario primario
+- [ ] criar um adaptador de imports para reescrever caminhos vindos do workspace temporario
+- [ ] criar um adaptador de utilitarios para converter o helper padrao do shadcn para o helper local quando houver compatibilidade simples
+- [ ] preservar isolamento quando o projeto nao tiver helper compativel, mantendo o utilitario do componente importado dentro do namespace do Visual Edit
+- [ ] registrar conflitos de nome e bloquear gravacao quando a importacao colidir com arquivos ja existentes no destino final
+- [ ] adicionar testes de bridge para aliases `@/*` e `~/*`, namespace isolado e adaptacao de `cn` para helper local
+
+Criterio de pronto:
+
+- [ ] usuario consegue importar um item do Shadcn e recebe no projeto um componente funcional, salvo em namespace isolado, sem sobrescrever `components/ui` ou `lib/utils`
+
+#### Milestone 4 - Sincronizacao com biblioteca local
+
+Objetivo:
+
+- refletir imediatamente na biblioteca local os itens Shadcn importados pelo fluxo isolado
+
+Entregas funcionais:
+
+- reindexacao apos importacao
+- destaque visual para itens trazidos do Shadcn
+- reconciliacao entre componentes novos do namespace do Visual Edit e componentes ja existentes no projeto
+
+Checklist tecnico:
+
+- [ ] disparar reindexacao apenas apos a persistencia final dos arquivos adaptados
+- [ ] marcar a origem do componente como `shadcn-imported` ou equivalente no indice interno
+- [ ] exibir no painel que o item foi importado para namespace isolado do Visual Edit
+- [ ] adicionar testes de indexacao cobrindo componentes importados pelo novo fluxo
+
+Criterio de pronto:
+
+- [ ] usuario consegue localizar na biblioteca local os componentes importados pelo fluxo isolado
+
+#### Milestone 5 - Insercao direta no canvas
+
+Objetivo:
+
+- permitir usar no fluxo visual os componentes importados pelo Shadcn
+
+Entregas funcionais:
+
+- insercao rapida a partir da biblioteca local
+- feedback claro quando o componente exigir composicao manual ou props obrigatorias
+- validacao minima para casos de blocos e charts
+
+Checklist tecnico:
+
+- [ ] permitir inserir o componente importado a partir da biblioteca local sem depender do catalogo Shadcn
+- [ ] exibir avisos quando o item importado exigir props obrigatorias ou subcomponentes compostos
+- [ ] diferenciar no UX os casos de componente simples, bloco e chart antes da insercao
+- [ ] adicionar cobertura de testes para refresh de biblioteca e insercao basica do componente importado
+
+Criterio de pronto:
+
+- [ ] usuario consegue importar um item do Shadcn e inseri-lo no canvas pelo mesmo fluxo usado para componentes locais
+
+### Estrategia de evolucao posterior - Compatibilidade inteligente com componentes locais
+
+Objetivo:
+
+- evoluir do isolamento seguro para reaproveitamento opcional das primitivas ja existentes no projeto, sem perder previsibilidade
+
+Escopo futuro:
+
+- detectar componentes locais equivalentes como `Button`, `Input`, `Dialog` e `Icon`
+- sugerir ou aplicar mapeamentos seguros entre a saida do Shadcn e as primitivas do projeto
+- reduzir codigo duplicado quando houver padroes locais consolidados
+
+Checklist de preparacao:
+
+- [ ] manter os adaptadores do Milestone 3 separados por responsabilidade para permitir heuristicas futuras sem reescrever o pipeline
+- [ ] registrar no manifest de importacao quais simbolos vieram do Shadcn e quais foram adaptados localmente
+- [ ] definir uma camada de `component mappings` opcional para evoluir depois sem mudar o contrato base da importacao isolada
+- [ ] desenhar um modo `conservador` padrao e um modo `compatibilidade inteligente` opt-in para a fase futura
+- [ ] mapear criterios de seguranca para so reutilizar componentes locais quando a compatibilidade for verificavel
+
+### Checklist de controle consolidado - Recurso 9 Shadcn
+
+- [x] catalogo oficial do Shadcn disponivel no bridge e na extensao
+- [x] endpoint e UX basica para acionar importacao por item
+- [ ] fluxo de importacao executado apenas em workspace temporario isolado
+- [ ] pipeline de adaptacao de aliases, imports e utilitarios locais
+- [ ] persistencia final em namespace isolado do Visual Edit
+- [ ] protecao total contra alteracao de `package.json`, lockfiles e arquivos padrao do host
+- [ ] sincronizacao da biblioteca local apos importacao
+- [ ] insercao do componente importado no canvas
+- [ ] arquitetura preparada para a futura compatibilidade inteligente com componentes locais
 
 ### Fora do escopo imediato
 

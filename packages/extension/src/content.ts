@@ -2,13 +2,14 @@ import { VisualEditPanel, type EditResponse } from './panel';
 import { VisualEditToolbar } from './toolbar';
 import { LayerPanel } from './layer-panel';
 import { ThemePanel } from './theme-panel';
-import { ComponentsPanel } from './components-panel';
+import { ComponentsPanel, type PreviewErrorPayload } from './components-panel';
 import { AssetsPanel, type AssetInfo } from './assets-panel';
 import { loadLanguage, t } from './i18n';
+import { isComponentPreviewPath, shouldInterceptEditorClick } from './preview-route';
 
 const BRIDGE = 'http://localhost:5179';
 const OID_ATTR = 'data-oid';
-const COMPONENT_PREVIEW_PATH_PREFIX = '/visual-edit-kit-component-preview/';
+const PREVIEW_DEPS_MODAL_ID = 've-preview-deps-modal';
 const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
 const CONTAINER_TAGS = new Set(['div', 'section', 'article', 'aside', 'main', 'header', 'footer', 'nav', 'form', 'ul', 'ol', 'li', 'figure', 'figcaption', 'fieldset', 'table', 'thead', 'tbody', 'tfoot', 'tr']);
 const NON_CONTAINER_TAGS = new Set(['button', 'a', 'p', 'span', 'label', 'strong', 'em', 'b', 'i', 'u', 'small', 'input', 'textarea', 'select', 'option', 'img', 'svg', 'path', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
@@ -54,6 +55,7 @@ let responsivePrefix = '';
 let componentRootOids = new Set<string>();
 let oidFileByOid = new Map<string, string>();
 let copyStyleTargetOid: string | null = null;
+let previewDepsModalEl: HTMLElement | null = null;
 
 function closeAssetsPanel(): void {
     assetsPanel?.destroy();
@@ -443,6 +445,140 @@ function showPageToast(msg: string, type: 'success' | 'error'): void {
     setTimeout(() => toastEl?.remove(), 2500);
 }
 
+async function copyTextToClipboard(value: string): Promise<boolean> {
+    try {
+        await navigator.clipboard.writeText(value);
+        return true;
+    } catch {
+        try {
+            const textarea = document.createElement('textarea');
+            textarea.value = value;
+            textarea.setAttribute('readonly', 'true');
+            Object.assign(textarea.style, {
+                position: 'fixed',
+                opacity: '0',
+                pointerEvents: 'none',
+            });
+            document.body.appendChild(textarea);
+            textarea.select();
+            const ok = document.execCommand('copy');
+            textarea.remove();
+            return ok;
+        } catch {
+            return false;
+        }
+    }
+}
+
+async function copyTextFromElement(element: HTMLTextAreaElement): Promise<boolean> {
+    element.focus();
+    element.select();
+    element.setSelectionRange(0, element.value.length);
+    const copied = await copyTextToClipboard(element.value);
+    if (copied) return true;
+    try {
+        return document.execCommand('copy');
+    } catch {
+        return false;
+    }
+}
+
+function closePreviewDependencyModal(): void {
+    previewDepsModalEl?.remove();
+    previewDepsModalEl = null;
+}
+
+function showPreviewDependencyModal(payload: PreviewErrorPayload): void {
+    const missingDependencies = payload.missingDependencies ?? [];
+    const installCommand = payload.installCommand ?? '';
+
+    if (!missingDependencies.length || !installCommand) {
+        showPageToast(payload.error ?? t('componentsPreviewUnavailable'), 'error');
+        return;
+    }
+
+    closePreviewDependencyModal();
+
+    const backdrop = document.createElement('div');
+    backdrop.id = PREVIEW_DEPS_MODAL_ID;
+    previewDepsModalEl = backdrop;
+    Object.assign(backdrop.style, {
+        position: 'fixed',
+        inset: '0',
+        zIndex: '2147483648',
+        background: 'rgba(0,0,0,.6)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '20px',
+    });
+
+    const modal = document.createElement('div');
+    Object.assign(modal.style, {
+        width: 'min(520px, calc(100vw - 40px))',
+        background: '#121212',
+        color: '#e5e5e5',
+        border: '1px solid #2a2a2a',
+        borderRadius: '14px',
+        boxShadow: '0 24px 80px rgba(0,0,0,.55)',
+        padding: '18px',
+        fontFamily: 'system-ui, sans-serif',
+    });
+
+    const depsList = missingDependencies.map(dep => `
+        <li style="margin:0;padding:0;color:#d4d4d4;font-size:13px;line-height:1.5;font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${dep}</li>
+    `).join('');
+
+    modal.innerHTML = `
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div>
+          <div style="font-size:11px;color:#a5b4fc;font-weight:700;letter-spacing:.08em;text-transform:uppercase">${t('componentsPreviewDepsTitle')}</div>
+          <div style="margin-top:8px;font-size:13px;line-height:1.6;color:#cfcfcf">${t('componentsPreviewDepsBody')}</div>
+        </div>
+        <button type="button" aria-label="${t('componentsClose')}" data-preview-deps-close style="display:inline-flex;align-items:center;justify-content:center;border:1px solid #2a2a2a;background:#171717;color:#999;border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:18px;line-height:1;padding:0;flex:0 0 auto">×</button>
+      </div>
+      <div style="margin-top:16px">
+        <div style="font-size:11px;color:#888;font-weight:700;letter-spacing:.08em;text-transform:uppercase">${t('componentsPreviewDepsListLabel')}</div>
+        <ul style="margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px">${depsList}</ul>
+      </div>
+      <div style="margin-top:16px">
+        <div style="font-size:11px;color:#888;font-weight:700;letter-spacing:.08em;text-transform:uppercase">${t('componentsPreviewDepsCommandLabel')}</div>
+        <textarea readonly data-preview-deps-command style="margin-top:8px;width:100%;min-height:74px;border:1px solid #2a2a2a;background:#0d0d0d;border-radius:10px;padding:12px;color:#c7d2fe;font-size:12px;line-height:1.6;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;resize:none;outline:none">${installCommand}</textarea>
+      </div>
+      <div style="margin-top:12px;font-size:12px;line-height:1.6;color:#fca5a5">${t('componentsPreviewDepsWarning')}</div>
+      <div style="margin-top:18px;display:flex;justify-content:flex-end;gap:8px">
+        <button type="button" data-preview-deps-dismiss style="padding:8px 12px;border-radius:8px;border:1px solid #2a2a2a;background:#171717;color:#ddd;cursor:pointer">${t('assetsCancel')}</button>
+        <button type="button" data-preview-deps-copy style="padding:8px 12px;border-radius:8px;border:1px solid #4338ca;background:#1e1b4b;color:#c7d2fe;cursor:pointer">${t('componentsPreviewDepsCopy')}</button>
+      </div>
+    `;
+
+    const close = () => closePreviewDependencyModal();
+    modal.addEventListener('click', event => event.stopPropagation());
+    backdrop.addEventListener('click', event => {
+        if (event.target === backdrop) close();
+    });
+    modal.querySelector<HTMLElement>('[data-preview-deps-close]')?.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+    });
+    modal.querySelector<HTMLElement>('[data-preview-deps-dismiss]')?.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+    });
+    modal.querySelector<HTMLElement>('[data-preview-deps-copy]')?.addEventListener('click', async event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const commandField = modal.querySelector<HTMLTextAreaElement>('[data-preview-deps-command]');
+        const copied = commandField ? await copyTextFromElement(commandField) : false;
+        showPageToast(copied ? t('componentsPreviewDepsCopySuccess') : t('componentsPreviewDepsCopyError'), copied ? 'success' : 'error');
+    });
+
+    backdrop.appendChild(modal);
+    document.body.appendChild(backdrop);
+}
+
 function oidSelector(oid: string): string {
     return `[${OID_ATTR}="${oid.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`;
 }
@@ -655,6 +791,13 @@ function openComponentsPanel(mode: 'browse' | 'insert' = 'browse'): void {
             const url = new URL(path, window.location.origin);
             window.open(url.toString(), '_blank', 'noopener,noreferrer');
             showPageToast(t('previewOpenedBrowser', { name: componentName }), 'success');
+        },
+        onPreviewError: (payload) => {
+            if (payload.code === 'missing-preview-dependencies' && payload.missingDependencies?.length && payload.installCommand) {
+                showPreviewDependencyModal(payload);
+                return;
+            }
+            showPageToast(payload.error || t('componentsPreviewUnavailable'), 'error');
         },
         onPageCreated: (routePath) => {
             const url = new URL(routePath, window.location.origin);
@@ -890,7 +1033,7 @@ function onMouseMove(e: MouseEvent): void {
 }
 
 /** IDs of all shadow-DOM panel host elements managed by this extension. */
-const VE_HOST_IDS = ['ve-panel-host', 've-toolbar-host', 've-layer-host', 've-theme-host', 've-components-host', 've-assets-host'];
+const VE_HOST_IDS = ['ve-panel-host', 've-toolbar-host', 've-layer-host', 've-theme-host', 've-components-host', 've-assets-host', PREVIEW_DEPS_MODAL_ID];
 
 /** Retorna true se o clique veio de dentro de qualquer panel shadow-DOM do VE. */
 function isInsidePanel(e: MouseEvent): boolean {
@@ -919,12 +1062,14 @@ function onClick(e: MouseEvent): void {
     if (VisualEditPanel.dragging || VisualEditToolbar.dragging) return;
     if (isInsidePanel(e)) return;
 
+    const target = getOidTarget(e.target);
+    if (!shouldInterceptEditorClick(window.location.pathname, Boolean(target))) return;
+
     // Previne navegação e outros handlers da página para TODOS os cliques
     // enquanto o modo de edição estiver ativo.
     e.preventDefault();
     e.stopPropagation();
 
-    const target = getOidTarget(e.target);
     if (!target) {
         if (copyStyleTargetOid) {
             copyStyleTargetOid = null;
@@ -979,6 +1124,12 @@ function onDblClick(e: MouseEvent): void {
 
 function onKeyDown(e: KeyboardEvent): void {
     if (!enabled) return;
+    if (e.key === 'Escape' && previewDepsModalEl) {
+        e.preventDefault();
+        e.stopPropagation();
+        closePreviewDependencyModal();
+        return;
+    }
     const target = e.target as HTMLElement | null;
     const isEditableTarget =
         target?.isContentEditable ||
@@ -1038,7 +1189,7 @@ function selectElement(el: HTMLElement, oid: string): void {
             onClose: deselect,
         });
     }
-    const isComponentPreview = window.location.pathname.startsWith(COMPONENT_PREVIEW_PATH_PREFIX);
+    const isComponentPreview = isComponentPreviewPath(window.location.pathname);
     const hasComponentContext = elementHasComponentContext(el);
     panel.show(el, oid, isComponentPreview
         ? { forceScope: 'component', hideScopeControl: true }

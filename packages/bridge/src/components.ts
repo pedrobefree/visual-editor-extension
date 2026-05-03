@@ -50,9 +50,9 @@ function extractExports(content: string): string[] {
 }
 
 function isComponentFile(fileName: string): boolean {
-    // PascalCase TSX/JSX files — typical React component naming
+    // TSX/JSX files only. We validate component-ness by exported PascalCase symbols later,
+    // because some generators such as shadcn emit lowercase file names like accordion.tsx.
     return /\.(tsx|jsx)$/.test(fileName) &&
-        /^[A-Z]/.test(fileName) &&
         !fileName.includes('.test.') &&
         !fileName.includes('.spec.') &&
         !fileName.includes('.stories.');

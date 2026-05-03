@@ -36,6 +36,17 @@ describe('listComponents', () => {
         expect(names).not.toContain('CartContext');
         expect(names).not.toContain('CartProvider');
     }));
+
+    test('lists lowercase shadcn files when they export a previewable PascalCase component', () => withProject(root => {
+        write(root, 'src/components/visual-edit/shadcn/ui/accordion.tsx', 'export function Accordion() { return <div />; }');
+
+        const components = listComponents(root);
+        const accordion = components.find(component => component.name === 'Accordion');
+
+        expect(accordion).toBeDefined();
+        expect(accordion?.relPath).toBe('src/components/visual-edit/shadcn/ui/accordion.tsx');
+        expect(accordion?.origin).toBe('visual-edit');
+    }));
 });
 
 describe('duplicateComponent', () => {

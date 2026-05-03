@@ -23,6 +23,7 @@ import { readTheme, writeTheme, type ThemeUpdate } from './theme';
 import { listComponents } from './components';
 import { createPreset, PRESETS, type PresetKind } from './presets';
 import { createPage, listPagePatterns } from './pages';
+import { installShadcnRegistryItem, listShadcnRegistryItems } from './shadcn';
 import { writeComponentPreview, type ComponentPreviewRequest } from './preview';
 import { listProjectClasses } from './classes';
 import { deleteAsset, listAssets, renameAsset, uploadAsset } from './assets';
@@ -258,6 +259,35 @@ export function startServer(projectRoot: string): void {
         if (!result.ok || !result.filePath) return c.json(result, 400);
         refreshFile(result.filePath, index);
         console.log(`[visual-edit] page-create → ${result.relPath} (${result.routePath})`);
+        return c.json(result);
+    });
+
+    /** GET /shadcn/items?q=&limit=&offset= — lists official shadcn registry items */
+    app.get('/shadcn/items', async (c) => {
+        const q = c.req.query('q') || undefined;
+        const rawLimit = Number.parseInt(c.req.query('limit') || '60', 10);
+        const rawOffset = Number.parseInt(c.req.query('offset') || '0', 10);
+        const limit = Number.isFinite(rawLimit) ? rawLimit : 60;
+        const offset = Number.isFinite(rawOffset) ? rawOffset : 0;
+        const result = await listShadcnRegistryItems(projectRoot, { query: q, limit, offset });
+        if (!result.ok) {
+            const status = result.code === 'missing-components-config' ? 400 : 500;
+            return c.json(result, status);
+        }
+        return c.json(result);
+    });
+
+    /** POST /shadcn/install { item } — installs one official shadcn registry item */
+    app.post('/shadcn/install', async (c) => {
+        const body = await c.req.json<{ item?: { name: string; type: string; registry: string; addCommandArgument: string } }>();
+        if (!body.item) return c.json({ ok: false, error: 'item required' }, 400);
+        const result = await installShadcnRegistryItem(projectRoot, body.item);
+        if (!result.ok) {
+            const status = result.code === 'missing-components-config' || result.code === 'invalid-item' ? 400 : 500;
+            return c.json(result, status);
+        }
+        rebuildIndex();
+        console.log(`[visual-edit] shadcn-install → ${body.item.addCommandArgument}`);
         return c.json(result);
     });
 
